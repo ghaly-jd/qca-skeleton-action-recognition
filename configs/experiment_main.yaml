@@ -1,0 +1,38 @@
+seeds: [0, 1, 2, 3, 4]
+
+datasets:
+  - msr_action3d
+  - utkinect
+
+normalization:
+  sequence_centering: true
+  feature_standardization: [none, zscore]
+  l2_normalize_frames: [false, true]
+
+subspace:
+  extraction: per_sequence_svd
+  center_sequence: true
+  r_values: [1, 2, 3, 4, 5, 6, 8, 10, 12]
+  r_values_paper: [2, 4, 6, 8, 10]
+  min_frames_required: 10
+
+canonical_angles:
+  clip_singular_values: true
+  distances:
+    - chordal
+    - projection
+    - mean_angle
+    - max_angle
+
+dtw:
+  frame_distance: euclidean
+  normalize_by_path_length: true
+  window_ratios: [null, 0.1, 0.2]
+
+pca_dtw:
+  k_values: [4, 8, 12, 16, 24, 32]
+
+evaluation:
+  classifier: one_nearest_neighbor
+  metrics: [accuracy, macro_f1]
+

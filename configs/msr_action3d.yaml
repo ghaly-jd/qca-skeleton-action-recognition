@@ -1,0 +1,25 @@
+dataset:
+  name: msr_action3d
+  raw_dir: data/raw/MSRAction3D
+  processed_dir: data/processed/msr_action3d
+  feature_dim: 60
+  num_joints: 20
+  coordinate_dim: 3
+  coordinate_mode: xyz
+  flatten_order: joint_major
+
+split:
+  protocol: cross_subject
+  train_subjects: [1, 3, 5, 7, 9]
+  test_subjects: [2, 4, 6, 8, 10]
+  seeds: [0, 1, 2, 3, 4]
+
+preprocessing:
+  remove_invalid_frames: true
+  root_center: true
+  root_joint: hip_or_spine
+  scale_normalize: true
+  feature_standardization: none
+  l2_normalize_frames: false
+  sequence_centering: true
+

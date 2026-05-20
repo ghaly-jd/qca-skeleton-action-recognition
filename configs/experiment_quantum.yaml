@@ -1,0 +1,32 @@
+quantum:
+  simulator: qiskit_aer
+  state_preparation: amplitude_encoding
+  seed_simulator: true
+  real_hardware: false
+  noise_model: false
+
+overlap:
+  primary_method: swap_test
+  optional_methods:
+    - hadamard_test
+
+subspace_affinity:
+  r_values_initial: [2, 3, 4]
+  r_values_full: [2, 4, 6, 8]
+  shots_initial: [128, 256, 512, 1024]
+  shots_full: [128, 256, 512, 1024, 2048]
+
+subset:
+  enabled: true
+  train_per_class: 3
+  test_per_class: 2
+
+shot_ablation:
+  r_values: [2, 4]
+  shots: [64, 128, 256, 512, 1024, 2048]
+
+distance_error:
+  num_pairs: 500
+  r_values: [2, 4, 6]
+  shots: [128, 512, 1024, 2048]
+

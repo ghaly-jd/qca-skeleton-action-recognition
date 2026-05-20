@@ -1,0 +1,69 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Virtual environments
+.venv/
+venv/
+env/
+.env
+
+# Jupyter
+.ipynb_checkpoints/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Data
+*.rar
+*.zip
+data/raw/**
+!data/raw/
+!data/raw/.gitkeep
+!data/raw/MSRAction3D/
+!data/raw/MSRAction3D/.gitkeep
+!data/raw/UTKinect/
+!data/raw/UTKinect/.gitkeep
+data/processed/**
+!data/processed/
+!data/processed/.gitkeep
+!data/processed/msr_action3d/
+!data/processed/msr_action3d/.gitkeep
+!data/processed/utkinect/
+!data/processed/utkinect/.gitkeep
+!data/splits/
+!data/splits/.gitkeep
+
+# Generated results
+results/raw/**
+results/tables/**
+results/figures/**
+!results/raw/
+!results/raw/.gitkeep
+!results/tables/
+!results/tables/.gitkeep
+!results/figures/
+!results/figures/.gitkeep
+
+# Paper build artifacts
+paper/**/*.aux
+paper/**/*.bbl
+paper/**/*.bcf
+paper/**/*.blg
+paper/**/*.fdb_latexmk
+paper/**/*.fls
+paper/**/*.log
+paper/**/*.out
+paper/**/*.run.xml
+paper/**/*.synctex.gz
+paper/**/*.toc

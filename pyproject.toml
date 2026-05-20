@@ -1,0 +1,40 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "quantum-canonical-angles-har"
+version = "0.0.1"
+description = "Quantum-estimated canonical-angle and subspace-affinity methods for skeleton-based action recognition."
+readme = "README.md"
+requires-python = ">=3.10"
+authors = [
+  { name = "Research Project" }
+]
+dependencies = [
+  "numpy>=1.24",
+  "scipy>=1.10",
+  "scikit-learn>=1.3",
+  "pandas>=2.0",
+  "matplotlib>=3.7",
+  "seaborn>=0.13",
+  "PyYAML>=6.0",
+  "tqdm>=4.66",
+]
+
+[project.optional-dependencies]
+quantum = [
+  "qiskit>=1.0",
+  "qiskit-aer>=0.14",
+]
+dev = [
+  "pytest>=7.4",
+]
+
+[tool.setuptools.packages.find]
+include = ["src*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+

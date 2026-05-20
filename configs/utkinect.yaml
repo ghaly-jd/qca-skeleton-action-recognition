@@ -1,0 +1,23 @@
+dataset:
+  name: utkinect
+  raw_dir: data/raw/UTKinect
+  processed_dir: data/processed/utkinect
+  feature_dim: null
+  num_joints: null
+  coordinate_dim: 3
+  coordinate_mode: xyz
+  flatten_order: joint_major
+
+split:
+  protocol: cross_subject
+  seeds: [0, 1, 2, 3, 4]
+
+preprocessing:
+  remove_invalid_frames: true
+  root_center: true
+  root_joint: hip_or_spine
+  scale_normalize: true
+  feature_standardization: none
+  l2_normalize_frames: false
+  sequence_centering: true
+

@@ -1,0 +1,30 @@
+figures:
+  method_overview:
+    output: results/figures/method_overview.pdf
+  accuracy_vs_rank:
+    input: results/raw/canonical_angles_exact.csv
+    output: results/figures/accuracy_vs_rank.pdf
+  dtw_vs_angles:
+    input: results/tables/main_results.csv
+    output: results/figures/dtw_vs_angles.pdf
+  shot_ablation:
+    input: results/raw/shot_ablation.csv
+    output: results/figures/shot_ablation.pdf
+  distance_error:
+    input: results/raw/distance_error.csv
+    output: results/figures/distance_error.pdf
+  encoding_heatmap:
+    input: results/raw/encoding_ablation.csv
+    output: results/figures/encoding_heatmap.pdf
+  noise_robustness:
+    input: results/raw/noise_robustness.csv
+    output: results/figures/noise_robustness.pdf
+
+tables:
+  dataset_summary:
+    input: results/tables/dataset_summary.csv
+  main_results:
+    input: results/tables/main_results.csv
+  ablation_results:
+    input: results/tables/ablation_results.csv
+
