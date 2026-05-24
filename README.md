@@ -21,7 +21,9 @@ Current completed artifacts include:
 - Raw DTW and PCA+DTW baselines under `results/raw/dtw_baselines.csv`.
 - First main comparison table under `results/tables/main_results.csv`.
 
-The next research phase is the quantum-estimated subspace-affinity extension.
+The quantum-estimated subspace-affinity extension is now implemented for the
+first SWAP-test version. The first subset sweep over ranks `2, 3, 4` and shots
+`128, 256, 512, 1024` is complete.
 
 ## Quick Setup Check
 
@@ -142,6 +144,55 @@ This writes:
 - `results/tables/dtw_baselines_summary.csv`
 - `results/tables/pca_dtw_baselines_summary.csv`
 - `results/tables/main_results.csv`
+
+Quantum-estimated subspace affinity smoke run:
+
+```bash
+python scripts/04_run_quantum_angles_sim.py \
+  --dataset msr_action3d \
+  --r-values 2 \
+  --shots 32 \
+  --seeds 0 \
+  --subset true \
+  --train-per-class 1 \
+  --test-per-class 1 \
+  --limit-train 4 \
+  --limit-test 3 \
+  --output results/raw/quantum_subspace_affinity_smoke.csv \
+  --summary-output results/tables/quantum_subspace_affinity_smoke_summary.csv
+```
+
+Phase 4 subset sweep:
+
+```bash
+python scripts/04_run_quantum_angles_sim.py \
+  --dataset msr_action3d \
+  --r-values 2 3 4 \
+  --shots 128 256 512 1024 \
+  --subset true \
+  --seeds 0 1 2 3 4
+```
+
+Outputs:
+
+- `results/raw/quantum_subspace_affinity.csv`
+- `results/tables/quantum_subspace_affinity_summary.csv`
+
+Exact-vs-quantum subset comparison:
+
+```bash
+python scripts/04_compare_quantum_exact_subset.py \
+  --dataset msr_action3d \
+  --r-values 2 3 4 \
+  --shots 128 256 512 1024 \
+  --subset true \
+  --seeds 0 1 2 3 4
+```
+
+Outputs:
+
+- `results/raw/quantum_exact_subset_comparison.csv`
+- `results/tables/quantum_exact_subset_comparison_summary.csv`
 
 ## Script Reference
 
@@ -339,6 +390,11 @@ From `results/tables/main_results.csv`:
 Raw DTW:                accuracy 0.843636, macro-F1 0.825326
 PCA+DTW, k=32:          accuracy 0.847273, macro-F1 0.829881
 Exact canonical angles: accuracy 0.737226, macro-F1 0.717567
+Quantum subspace affinity subset, r=2, shots=1024:
+                         accuracy 0.655000, macro-F1 0.628460
+Exact-vs-quantum subset comparison, r=2, shots=1024:
+                         exact accuracy 0.655000, quantum accuracy 0.655000,
+                         distance MAE 0.021615, prediction agreement 0.890000
 ```
 
 ## Key Documents

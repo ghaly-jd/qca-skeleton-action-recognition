@@ -1,5 +1,6 @@
 quantum:
-  simulator: qiskit_aer
+  simulator: sampling
+  circuit_simulator: qiskit_aer
   state_preparation: amplitude_encoding
   seed_simulator: true
   real_hardware: false
@@ -29,4 +30,3 @@ distance_error:
   num_pairs: 500
   r_values: [2, 4, 6]
   shots: [128, 512, 1024, 2048]
-

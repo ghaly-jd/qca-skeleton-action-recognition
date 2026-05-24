@@ -1,6 +1,6 @@
 # Research Status: Quantum-Estimated Canonical Angles for HAR
 
-Last updated: 2026-05-20
+Last updated: 2026-05-24
 
 Source plan: `RESEARCH_PLAN_quantum_canonical_angles_HAR.md`  
 Process roadmap: `RESEARCH_PROCESS_quantum_canonical_angles_HAR.md`
@@ -22,9 +22,9 @@ Process roadmap: `RESEARCH_PROCESS_quantum_canonical_angles_HAR.md`
 | Research plan | Done | `RESEARCH_PLAN_quantum_canonical_angles_HAR.md` exists. |
 | Process roadmap | Done | `RESEARCH_PROCESS_quantum_canonical_angles_HAR.md` created. |
 | Status tracker | Done | This file created. |
-| Codebase implementation | In progress | Phase 2 exact subspace-angle pipeline and Phase 3 classical baselines exist; quantum pipeline is next. |
+| Codebase implementation | In progress | Phase 2 exact subspace-angle pipeline, Phase 3 classical baselines, and Phase 4 SWAP-test affinity implementation exist. |
 | Main dataset results | In progress | MSR Action3D is processed; exact canonical-angle, raw DTW, PCA+DTW, and main comparison table exist. |
-| Quantum experiments | Not started | Quantum circuit code is not implemented yet. |
+| Quantum experiments | In progress | SWAP-test state preparation, overlap estimation, quantum-affinity distance, tests, script, and first subset sweep exist. |
 | Paper draft | Not started | Paper folder and LaTeX draft are not created yet. |
 
 ## Immediate Next Milestone
@@ -40,6 +40,10 @@ Ready to show advisor/sensei when these are done:
 | Accuracy vs rank plot | Done | `results/figures/accuracy_vs_rank.png`. |
 | PCA+DTW baseline | Done | `results/raw/pca_dtw_baselines.csv`; best setting is k=32, window none, accuracy 0.8473, macro-F1 0.8299. |
 | Main comparison table | Done | `results/tables/main_results.csv`; includes Raw DTW, PCA+DTW, and Exact Canonical Angles. |
+| Quantum SWAP-test implementation | Done | `src/quantum/state_preparation.py`, `src/quantum/swap_test.py`, `src/quantum/overlap_estimation.py`, `src/distances/quantum_estimated_angles.py`, `scripts/04_run_quantum_angles_sim.py`, and `tests/test_quantum_overlap.py`. |
+| Quantum smoke run | Done | `results/raw/quantum_subspace_affinity_smoke.csv`; tiny subset check with rank 2 and 32 shots completed. |
+| Quantum subset sweep | Done | `results/raw/quantum_subspace_affinity.csv` and `results/tables/quantum_subspace_affinity_summary.csv`; best mean subset setting is r=2, shots=1024, accuracy 0.6550, macro-F1 0.6285. |
+| Exact-vs-quantum subset comparison | Done | `results/raw/quantum_exact_subset_comparison.csv` and `results/tables/quantum_exact_subset_comparison_summary.csv`; r=2, shots=1024 matches exact subset accuracy 0.6550 with MAE 0.0216 and prediction agreement 0.8900. |
 | Quantum extension paragraph | Not started | Short method paragraph in paper notes or README. |
 
 ---
@@ -129,15 +133,15 @@ Done condition: `results/tables/main_results.csv` includes at least Raw DTW, PCA
 
 | ID | Step | Status | Evidence / Output | Notes |
 |---|---|---|---|---|
-| 4.1 | Choose quantum simulator stack | Not started | Config entry | Plan suggests Qiskit Aer. |
-| 4.2 | Implement amplitude encoding | Not started | `src/quantum/state_preparation.py` | Pad 60D vectors to power-of-two length if needed. |
-| 4.3 | Implement SWAP test circuit | Not started | `src/quantum/swap_test.py` | Estimates squared overlaps. |
-| 4.4 | Test SWAP test on known vectors | Not started | `tests/test_quantum_overlap.py` | Identical and orthogonal sanity checks. |
-| 4.5 | Implement overlap estimation wrapper | Not started | `src/quantum/overlap_estimation.py` | Common interface for quantum overlap methods. |
-| 4.6 | Implement quantum subspace affinity | Not started | `src/distances/quantum_estimated_angles.py` | Use `r^2` overlap estimates per sequence pair. |
-| 4.7 | Add quantum simulation script | Not started | `scripts/04_run_quantum_angles_sim.py` | Start with subset mode. |
-| 4.8 | Run small subset experiment | Not started | `results/raw/quantum_subspace_affinity.csv` | r: 2,3,4. shots: 128,256,512,1024. |
-| 4.9 | Compare quantum affinity with exact method | Not started | Analysis table or notes | Check behavior before full run. |
+| 4.1 | Choose quantum simulator stack | Done | `configs/experiment_quantum.yaml` | Default fast SWAP-test shot sampling; optional `qiskit_aer` circuit backend is supported. |
+| 4.2 | Implement amplitude encoding | Done | `src/quantum/state_preparation.py` | Pads 60D vectors to power-of-two length and normalizes amplitudes. |
+| 4.3 | Implement SWAP test circuit | Done | `src/quantum/swap_test.py` | Builds Qiskit SWAP-test circuits and supports exact/sampling/Aer overlap estimates. |
+| 4.4 | Test SWAP test on known vectors | Done | `tests/test_quantum_overlap.py` | Identical and orthogonal sanity checks pass for exact/sampling; Aer tests are optional if installed. |
+| 4.5 | Implement overlap estimation wrapper | Done | `src/quantum/overlap_estimation.py` | Common cached SWAP-test estimator interface. |
+| 4.6 | Implement quantum subspace affinity | Done | `src/distances/quantum_estimated_angles.py` | Uses `r^2` overlap estimates per sequence pair and projection-Frobenius normalization by default. |
+| 4.7 | Add quantum simulation script | Done | `scripts/04_run_quantum_angles_sim.py` | Supports subset mode, rank/shot sweeps, and summary CSV output. |
+| 4.8 | Run small subset experiment | Done | `results/raw/quantum_subspace_affinity.csv`, `results/tables/quantum_subspace_affinity_summary.csv` | r: 2,3,4; shots: 128,256,512,1024; best mean subset setting is r=2, shots=1024, accuracy 0.6550, macro-F1 0.6285. |
+| 4.9 | Compare quantum affinity with exact method | Done | `results/raw/quantum_exact_subset_comparison.csv`, `results/tables/quantum_exact_subset_comparison_summary.csv` | On the subset, r=2 at 1024 shots matches exact affinity accuracy 0.6550; distance MAE drops from 0.0596 at 128 shots to 0.0216 at 1024 shots. |
 | 4.10 | Implement optional signed inner-product method | Optional | `src/quantum/hadamard_test.py` | Future work unless time allows. |
 
 Done condition: quantum-estimated subspace affinity runs on an MSR subset and writes clean results.
