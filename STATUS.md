@@ -35,7 +35,7 @@ After each step, also append to the **Decision Log** at the bottom if you made a
 
 | Phase | Title | Status | Steps Done / Total | Gate |
 | --- | --- | --- | --- | --- |
-| 1 | Methodology Lockdown | In progress | 10 / 25 | Phase 1 acceptance (Step 1.25) |
+| 1 | Methodology Lockdown | In progress | 11 / 25 | Phase 1 acceptance (Step 1.25) |
 | 2 | Few-Shot Centerpiece | Not started | 0 / 14 | Phase 2 acceptance (Step 2.14) |
 | 3 | Mechanism + Generalization | Not started | 0 / 18 | None (continues into Phase 4) |
 | 4 | Paper + Polish | Not started | 0 / 13 | Submission (Step 4.13) |
@@ -56,7 +56,7 @@ After each step, also append to the **Decision Log** at the bottom if you made a
 | 1.8 | Implement clean Local-SDTW module | Done | src/distances/local_sdtw.py; pytest (100 passed, 2 skipped); raw API smoke: identical=1.998e-16, random=0.6561 | Added raw-array API while preserving precomputed-subspace path |
 | 1.9 | Add Local-SDTW tests | Done | tests/test_local_sdtw.py (14 passed); pytest (105 passed, 2 skipped) | Added raw Local-SDTW correctness tests |
 | 1.10 | Implement MLP baseline | Done | src/baselines/mlp.py, src/baselines/__init__.py, tests/test_mlp_baseline.py (2 passed); pytest (107 passed, 2 skipped) | |
-| 1.11 | Implement LSTM baseline | Not started | | |
+| 1.11 | Implement LSTM baseline | Done | src/baselines/lstm.py, tests/test_lstm_baseline.py (1 passed); pytest (108 passed, 2 skipped) | Uses packed padded sequences |
 | 1.12 | Implement Random Forest baseline | Not started | | |
 | 1.13 | Implement KDTW baseline | Not started | | |
 | 1.14 | Implement GAK baseline | Not started | | Optional |
@@ -151,6 +151,7 @@ Append a row to this table whenever a non-obvious choice is made (e.g., choosing
 | 2026-05-27 | Drop NTU-RGB+D from scope | Scope discipline; UTKinect + UTD-MHAD sufficient | Planning |
 | 2026-05-27 | Preserve legacy `LocalSubspaceSequence` Local-SDTW path while adding the Step 1.8 raw-array API | Existing exact and SWAP scripts already depend on precomputed local subspaces; dispatch keeps those paths stable | 1.8 |
 | 2026-05-27 | Standardize pooled MLP features before training | Mean/max/std pooled skeleton features can live on different scales; standardization makes the learned baseline more stable | 1.10 |
+| 2026-05-27 | Standardize LSTM frame features before packed-sequence training | Skeleton feature scales vary by mode; per-frame standardization keeps the learned sequence baseline numerically stable | 1.11 |
 
 ---
 
