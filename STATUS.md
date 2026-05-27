@@ -35,7 +35,7 @@ After each step, also append to the **Decision Log** at the bottom if you made a
 
 | Phase | Title | Status | Steps Done / Total | Gate |
 | --- | --- | --- | --- | --- |
-| 1 | Methodology Lockdown | In progress | 8 / 25 | Phase 1 acceptance (Step 1.25) |
+| 1 | Methodology Lockdown | In progress | 9 / 25 | Phase 1 acceptance (Step 1.25) |
 | 2 | Few-Shot Centerpiece | Not started | 0 / 14 | Phase 2 acceptance (Step 2.14) |
 | 3 | Mechanism + Generalization | Not started | 0 / 18 | None (continues into Phase 4) |
 | 4 | Paper + Polish | Not started | 0 / 13 | Submission (Step 4.13) |
@@ -54,7 +54,7 @@ After each step, also append to the **Decision Log** at the bottom if you made a
 | 1.6 | Add motion feature tests | Done | tests/test_motion_features.py (25 passed) | Fixed acceleration to use direct 2nd differences |
 | 1.7 | Add `--feature-mode` to existing scripts | Done | scripts/02_run_dtw_baselines.py, scripts/03_run_subspace_angles.py, scripts/04_run_quantum_angles_sim.py | |
 | 1.8 | Implement clean Local-SDTW module | Done | src/distances/local_sdtw.py; pytest (100 passed, 2 skipped); raw API smoke: identical=1.998e-16, random=0.6561 | Added raw-array API while preserving precomputed-subspace path |
-| 1.9 | Add Local-SDTW tests | Not started | | |
+| 1.9 | Add Local-SDTW tests | Done | tests/test_local_sdtw.py (14 passed); pytest (105 passed, 2 skipped) | Added raw Local-SDTW correctness tests |
 | 1.10 | Implement MLP baseline | Not started | | |
 | 1.11 | Implement LSTM baseline | Not started | | |
 | 1.12 | Implement Random Forest baseline | Not started | | |

@@ -11,6 +11,10 @@ from src.distances.local_sdtw import (
 from src.features.local_subspace import compute_local_subspace_sequence
 
 
+def exact_overlap(u: np.ndarray, v: np.ndarray) -> float:
+    return float((u @ v) ** 2)
+
+
 def test_projection_affinity_cost_for_identical_and_orthogonal_bases():
     basis_x = np.eye(3, 1)
     basis_y = np.eye(3, 1)
@@ -76,6 +80,104 @@ def test_identical_local_subspace_sequences_have_zero_distance():
     distance = local_sdtw_distance(local_sequence, local_sequence)
 
     assert distance == pytest.approx(0.0, abs=1e-10)
+
+
+def test_raw_local_sdtw_identical_sequences_have_zero_distance():
+    rng = np.random.default_rng(47)
+    sequence = rng.normal(size=(18, 6))
+
+    distance = local_sdtw_distance(
+        sequence,
+        sequence,
+        window_size=6,
+        stride=3,
+        rank=2,
+        overlap_fn=exact_overlap,
+    )
+
+    assert distance == pytest.approx(0.0, abs=1e-10)
+
+
+def test_raw_local_sdtw_sequence_vs_reverse_is_positive_and_finite():
+    rng = np.random.default_rng(48)
+    sequence = rng.normal(size=(21, 6))
+
+    distance = local_sdtw_distance(
+        sequence,
+        sequence[::-1],
+        window_size=5,
+        stride=2,
+        rank=2,
+        overlap_fn=exact_overlap,
+    )
+
+    assert np.isfinite(distance)
+    assert distance > 0.0
+
+
+def test_raw_local_sdtw_same_underlying_motion_subspace_is_near_zero():
+    rng = np.random.default_rng(49)
+    shared_basis, _ = np.linalg.qr(rng.normal(size=(8, 2)))
+    first_coefficients = rng.normal(size=(24, 2))
+    second_coefficients = rng.normal(size=(24, 2))
+    first = first_coefficients @ shared_basis.T
+    second = second_coefficients @ shared_basis.T
+
+    distance = local_sdtw_distance(
+        first,
+        second,
+        window_size=6,
+        stride=3,
+        rank=2,
+        overlap_fn=exact_overlap,
+    )
+
+    assert distance == pytest.approx(0.0, abs=1e-10)
+
+
+def test_raw_local_sdtw_orthogonal_motion_subspaces_are_far_apart():
+    rng = np.random.default_rng(50)
+    first_basis = np.eye(8)[:, :2]
+    second_basis = np.eye(8)[:, 2:4]
+    first = rng.normal(size=(24, 2)) @ first_basis.T
+    second = rng.normal(size=(24, 2)) @ second_basis.T
+
+    distance = local_sdtw_distance(
+        first,
+        second,
+        window_size=6,
+        stride=3,
+        rank=2,
+        overlap_fn=exact_overlap,
+    )
+
+    assert distance == pytest.approx(1.0, abs=1e-10)
+
+
+def test_raw_local_sdtw_is_invariant_to_shared_feature_rotation():
+    rng = np.random.default_rng(51)
+    first = rng.normal(size=(19, 7))
+    second = rng.normal(size=(22, 7))
+    rotation, _ = np.linalg.qr(rng.normal(size=(7, 7)))
+
+    original = local_sdtw_distance(
+        first,
+        second,
+        window_size=6,
+        stride=3,
+        rank=2,
+        overlap_fn=exact_overlap,
+    )
+    rotated = local_sdtw_distance(
+        first @ rotation,
+        second @ rotation,
+        window_size=6,
+        stride=3,
+        rank=2,
+        overlap_fn=exact_overlap,
+    )
+
+    assert rotated == pytest.approx(original, abs=1e-10)
 
 
 def test_local_subspace_cost_matrix_has_expected_shape():
