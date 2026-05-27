@@ -178,6 +178,28 @@ def test_pairwise_quantum_affinity_distances_shape_and_values():
     assert np.allclose(overlaps, np.eye(2))
 
 
+def test_pairwise_quantum_affinity_vectorized_sampling_is_seeded():
+    train = np.stack([np.eye(5, 2), np.eye(5)[:, 1:3]], axis=0)
+    test = np.stack([np.eye(5, 2), np.eye(5)[:, 2:4]], axis=0)
+
+    first_estimator = SwapTestOverlapEstimator(shots=256, simulator="sampling", seed=17)
+    second_estimator = SwapTestOverlapEstimator(shots=256, simulator="sampling", seed=17)
+    first = pairwise_quantum_subspace_affinity_distances(
+        test,
+        train,
+        estimator=first_estimator,
+    )
+    second = pairwise_quantum_subspace_affinity_distances(
+        test,
+        train,
+        estimator=second_estimator,
+    )
+
+    assert first.shape == (2, 2)
+    assert np.allclose(first, second)
+    assert first_estimator.num_estimates == 16
+
+
 def test_pairwise_exact_affinity_distances_shape_and_values():
     train = np.stack([np.eye(5, 2), np.eye(5)[:, 2:4]], axis=0)
     test = np.stack([np.eye(5, 2)], axis=0)

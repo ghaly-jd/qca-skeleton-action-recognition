@@ -35,7 +35,7 @@ After each step, also append to the **Decision Log** at the bottom if you made a
 
 | Phase | Title | Status | Steps Done / Total | Gate |
 | --- | --- | --- | --- | --- |
-| 1 | Methodology Lockdown | In progress | 15 / 25 | Phase 1 acceptance (Step 1.25) |
+| 1 | Methodology Lockdown | In progress | 16 / 25 | Phase 1 acceptance (Step 1.25) |
 | 2 | Few-Shot Centerpiece | Not started | 0 / 14 | Phase 2 acceptance (Step 2.14) |
 | 3 | Mechanism + Generalization | Not started | 0 / 18 | None (continues into Phase 4) |
 | 4 | Paper + Polish | Not started | 0 / 13 | Submission (Step 4.13) |
@@ -61,7 +61,7 @@ After each step, also append to the **Decision Log** at the bottom if you made a
 | 1.13 | Implement KDTW baseline | Done | src/baselines/kdtw.py, tests/test_kdtw_baseline.py (4 passed); pytest (114 passed, 2 skipped) | |
 | 1.14 | Implement GAK baseline | Done | src/baselines/gak.py, tests/test_gak_baseline.py (4 passed); pytest (118 passed, 2 skipped) | Optional step completed |
 | 1.15 | Add `scripts/09_run_classical_baselines.py` | Done | scripts/09_run_classical_baselines.py; /tmp/classical_baselines_step_1_15_smoke.csv (1 row); pytest (118 passed, 2 skipped) | Smoke: `mlp`, seed 0, position |
-| 1.16 | Profile and optimize quantum simulation | Not started | | |
+| 1.16 | Profile and optimize quantum simulation | Done | src/quantum/overlap_estimation.py, src/distances/quantum_estimated_angles.py, scripts/04_run_quantum_angles_sim.py, results/REPORTS/step_1_16_quantum_profile.md; pytest (119 passed, 2 skipped) | 60x40 rank=2 shots=1024: 1.09s -> 0.0857s; full seed0 rank=2 shots=1024: 0.974s |
 | 1.17 | Run classical baselines (full data, 10 seeds, all feature modes) | Not started | | |
 | 1.18 | Re-run DTW baselines (full data, 10 seeds, all feature modes) | Not started | | |
 | 1.19 | Run Exact Local-SDTW (full data, 10 seeds, all feature modes) | Not started | | |
@@ -156,6 +156,9 @@ Append a row to this table whenever a non-obvious choice is made (e.g., choosing
 | 2026-05-27 | Use normalized RBF-local KDTW similarity for the KDTW 1-NN baseline | Normalization makes self-similarity exactly 1.0 and gives a stable kernel distance for nearest-neighbor classification | 1.13 |
 | 2026-05-27 | Implement GAK directly instead of adding `tslearn` | Keeps dependencies unchanged while providing the optional classical alignment-kernel baseline | 1.14 |
 | 2026-05-27 | Write classical baseline rows with the standard `ResultRecord` schema | Keeps learned/kernel baseline outputs compatible with the Phase 1 aggregation path | 1.15 |
+| 2026-05-27 | Vectorize ideal SWAP sampling for basis stacks while keeping scalar Aer fallback | The paper-track quantum sweeps use ideal shot-noise sampling; circuit simulation still needs the per-overlap scalar path | 1.16 |
+| 2026-05-27 | Add seed-level multiprocessing as an explicit `--num-workers` option | Keeps single-worker runs reproducible by default while allowing Phase 1 sweeps to parallelize across seeds | 1.16 |
+| 2026-05-27 | Include `feature_mode` in quantum summary grouping | Prevents multi-feature quantum runs from averaging different feature representations together | 1.16 |
 
 ---
 

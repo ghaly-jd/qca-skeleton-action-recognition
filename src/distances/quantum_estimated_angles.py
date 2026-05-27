@@ -38,12 +38,7 @@ def estimate_subspace_squared_overlaps(
 ) -> np.ndarray:
     """Estimate all pairwise basis-vector squared overlaps for two subspaces."""
     x, y = _validate_basis_pair(basis_x, basis_y)
-    rank = x.shape[1]
-    overlaps = np.empty((rank, rank), dtype=np.float64)
-    for i in range(rank):
-        for j in range(rank):
-            overlaps[i, j] = estimator.estimate(x[:, i], y[:, j]).overlap_squared
-    return overlaps
+    return estimator.estimate_basis_pair_squared_overlaps(x, y)
 
 
 def subspace_affinity_from_squared_overlaps(
@@ -82,6 +77,14 @@ def pairwise_quantum_subspace_affinity_distances(
     train = _as_basis_stack(train_bases, name="train_bases")
     if test.shape[1:] != train.shape[1:]:
         raise ValueError("Basis stacks must have matching D x r dimensions.")
+
+    if estimator.supports_vectorized_sampling:
+        squared_overlaps = estimator.estimate_basis_stack_squared_overlaps(test, train)
+        affinity = _subspace_affinity_array(
+            squared_overlaps,
+            normalization=normalization,
+        )
+        return np.maximum(0.0, 1.0 - np.clip(affinity, 0.0, 1.0))
 
     distances = np.empty((test.shape[0], train.shape[0]), dtype=np.float64)
     for test_index in range(test.shape[0]):
@@ -125,15 +128,34 @@ def pairwise_exact_subspace_affinity_distances(
 
     cross = np.einsum("tdp,ndq->tnpq", test, train, optimize=True)
     squared_overlaps = np.square(cross)
+    affinity = _subspace_affinity_array(
+        squared_overlaps,
+        normalization=normalization,
+    )
+    return np.maximum(0.0, 1.0 - np.clip(affinity, 0.0, 1.0))
+
+
+def _subspace_affinity_array(
+    squared_overlaps: np.ndarray,
+    *,
+    normalization: str = "projection_frobenius",
+) -> np.ndarray:
+    values = np.asarray(squared_overlaps, dtype=np.float64)
+    if values.ndim < 2 or values.shape[-1] != values.shape[-2]:
+        raise ValueError("squared_overlaps must end with an r x r matrix.")
+    rank = values.shape[-1]
+    if rank == 0:
+        raise ValueError("Subspace rank must be positive.")
+
     normalization = normalization.lower()
     if normalization == "projection_frobenius":
-        affinity = np.sum(squared_overlaps, axis=(-2, -1)) / test.shape[2]
+        affinity = np.sum(values, axis=(-2, -1)) / rank
     elif normalization == "mean":
-        affinity = np.mean(squared_overlaps, axis=(-2, -1))
+        affinity = np.mean(values, axis=(-2, -1))
     else:
         known = ", ".join(AFFINITY_NORMALIZATIONS)
         raise ValueError(f"Unknown affinity normalization '{normalization}': {known}.")
-    return np.maximum(0.0, 1.0 - np.clip(affinity, 0.0, 1.0))
+    return affinity
 
 
 def _validate_basis_pair(

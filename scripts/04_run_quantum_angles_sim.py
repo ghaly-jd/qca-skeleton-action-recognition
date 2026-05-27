@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import sys
+from multiprocessing import get_context
 from pathlib import Path
 from time import perf_counter
 from typing import Any
@@ -24,7 +25,7 @@ from src.eval.knn import predict_1nn_from_distances
 from src.eval.metrics import accuracy, macro_f1
 from src.eval.result_writer import get_git_commit, utc_timestamp
 from src.features.motion_features import apply_feature_mode
-from src.features.sequence_subspace import compute_subspaces, stack_bases
+from src.features.sequence_subspace import compute_sequence_subspace, stack_bases
 from src.quantum.overlap_estimation import SwapTestOverlapEstimator
 from src.utils.io import read_json, read_yaml, write_csv_rows
 from src.utils.logging import get_logger
@@ -56,6 +57,7 @@ RESULT_FIELDNAMES = [
 
 SUMMARY_FIELDNAMES = [
     "dataset",
+    "feature_mode",
     "r",
     "shots",
     "overlap_method",
@@ -68,6 +70,50 @@ SUMMARY_FIELDNAMES = [
     "macro_f1_std",
     "runtime_mean",
 ]
+
+
+class SubspaceBasisCache:
+    """Cache per-sequence SVD bases for one quantum-affinity run."""
+
+    def __init__(
+        self,
+        dataset: ProcessedDataset,
+        dataset_config: dict[str, Any] | None,
+    ) -> None:
+        self.dataset = dataset
+        self.dataset_config = dataset_config
+        self._cache: dict[tuple[int, str, int, bool, int], Any] = {}
+
+    def get(
+        self,
+        index: int,
+        *,
+        rank: int,
+        center_sequence: bool,
+        min_frames_required: int,
+        feature_mode: str,
+    ) -> Any:
+        key = (
+            int(index),
+            str(feature_mode),
+            int(rank),
+            bool(center_sequence),
+            int(min_frames_required),
+        )
+        if key not in self._cache:
+            sequence = apply_feature_mode(
+                self.dataset.sequences[int(index)],
+                feature_mode,
+                self.dataset_config,
+            )
+            self._cache[key] = compute_sequence_subspace(
+                sequence,
+                rank=rank,
+                sequence_id=self.dataset.sequence_ids[int(index)],
+                center_sequence=center_sequence,
+                min_frames_required=min_frames_required,
+            )
+        return self._cache[key]
 
 
 def main() -> None:
@@ -111,6 +157,8 @@ def main() -> None:
             limit_train=args.limit_train,
             limit_test=args.limit_test,
             cache_overlaps=not args.no_cache_overlaps,
+            cache_subspaces=not args.no_cache_subspaces,
+            num_workers=args.num_workers,
             logger=logger,
         ))
 
@@ -143,129 +191,200 @@ def run_experiment(
     limit_test: int | None,
     cache_overlaps: bool,
     logger: Any,
+    cache_subspaces: bool = True,
+    num_workers: int = 1,
 ) -> list[dict[str, Any]]:
     _validate_affinity_normalization(affinity_normalization)
     rows: list[dict[str, Any]] = []
     timestamp = utc_timestamp()
     git_commit = get_git_commit()
 
-    for seed in seeds:
-        split = _load_seed_split(seed)
-        for rank in r_values:
-            required_frames = max(min_frames_required, rank + 1)
-            train_indices = _filter_indices_by_frame_count(
-                split["train_indices"],
-                dataset,
-                required_frames=required_frames,
-            )
-            test_indices = _filter_indices_by_frame_count(
-                split["test_indices"],
-                dataset,
-                required_frames=required_frames,
-            )
+    payloads = [
+        {
+            "dataset": dataset,
+            "seed": int(seed),
+            "r_values": r_values,
+            "shots_values": shots_values,
+            "feature_mode": feature_mode,
+            "dataset_config": dataset_config,
+            "simulator": simulator,
+            "subset_enabled": subset_enabled,
+            "train_per_class": train_per_class,
+            "test_per_class": test_per_class,
+            "min_frames_required": min_frames_required,
+            "center_sequence": center_sequence,
+            "affinity_normalization": affinity_normalization,
+            "limit_train": limit_train,
+            "limit_test": limit_test,
+            "cache_overlaps": cache_overlaps,
+            "cache_subspaces": cache_subspaces,
+            "timestamp": timestamp,
+            "git_commit": git_commit,
+        }
+        for seed in seeds
+    ]
 
-            if subset_enabled:
-                train_indices = _select_per_class(
-                    train_indices,
-                    dataset.labels,
-                    train_per_class,
-                )
-                test_indices = _select_per_class(
-                    test_indices,
-                    dataset.labels,
-                    test_per_class,
-                )
-            if limit_train is not None:
-                train_indices = train_indices[:limit_train]
-            if limit_test is not None:
-                test_indices = test_indices[:limit_test]
-            if not train_indices or not test_indices:
-                raise ValueError("Train and test splits must both be non-empty.")
+    if num_workers > 1 and len(payloads) > 1:
+        process_count = min(int(num_workers), len(payloads))
+        logger.info("Parallelizing quantum affinity over %s seed workers.", process_count)
+        context = _multiprocessing_context()
+        with context.Pool(processes=process_count) as pool:
+            for seed_rows in pool.imap_unordered(_run_seed_experiment, payloads):
+                rows.extend(seed_rows)
+        rows.sort(key=lambda row: (int(row["seed"]), int(row["r"]), int(row["shots"])))
+        return rows
 
-            extract_start = perf_counter()
-            train_subspaces = _compute_indexed_subspaces(
-                dataset,
+    for payload in payloads:
+        payload["logger"] = logger
+        rows.extend(_run_seed_experiment(payload))
+
+    return rows
+
+
+def _run_seed_experiment(payload: dict[str, Any]) -> list[dict[str, Any]]:
+    dataset: ProcessedDataset = payload["dataset"]
+    seed = int(payload["seed"])
+    r_values = [int(rank) for rank in payload["r_values"]]
+    shots_values = [int(shots) for shots in payload["shots_values"]]
+    feature_mode = str(payload["feature_mode"])
+    dataset_config = payload["dataset_config"]
+    simulator = str(payload["simulator"])
+    subset_enabled = bool(payload["subset_enabled"])
+    train_per_class = int(payload["train_per_class"])
+    test_per_class = int(payload["test_per_class"])
+    min_frames_required = int(payload["min_frames_required"])
+    center_sequence = bool(payload["center_sequence"])
+    affinity_normalization = str(payload["affinity_normalization"])
+    limit_train = payload["limit_train"]
+    limit_test = payload["limit_test"]
+    cache_overlaps = bool(payload["cache_overlaps"])
+    timestamp = str(payload["timestamp"])
+    git_commit = str(payload["git_commit"])
+    logger = payload.get("logger") or get_logger("quantum_angles")
+    subspace_cache = (
+        SubspaceBasisCache(dataset, dataset_config)
+        if bool(payload["cache_subspaces"])
+        else None
+    )
+
+    rows: list[dict[str, Any]] = []
+    split = _load_seed_split(seed)
+    for rank in r_values:
+        required_frames = max(min_frames_required, rank + 1)
+        train_indices = _filter_indices_by_frame_count(
+            split["train_indices"],
+            dataset,
+            required_frames=required_frames,
+        )
+        test_indices = _filter_indices_by_frame_count(
+            split["test_indices"],
+            dataset,
+            required_frames=required_frames,
+        )
+
+        if subset_enabled:
+            train_indices = _select_per_class(
                 train_indices,
-                rank=rank,
-                center_sequence=center_sequence,
-                min_frames_required=required_frames,
-                feature_mode=feature_mode,
-                dataset_config=dataset_config,
+                dataset.labels,
+                train_per_class,
             )
-            test_subspaces = _compute_indexed_subspaces(
-                dataset,
+            test_indices = _select_per_class(
                 test_indices,
-                rank=rank,
-                center_sequence=center_sequence,
-                min_frames_required=required_frames,
-                feature_mode=feature_mode,
-                dataset_config=dataset_config,
+                dataset.labels,
+                test_per_class,
             )
-            train_bases = stack_bases(train_subspaces)
-            test_bases = stack_bases(test_subspaces)
-            y_train = dataset.labels[train_indices]
-            y_test = dataset.labels[test_indices]
-            extraction_runtime = perf_counter() - extract_start
+        if limit_train is not None:
+            train_indices = train_indices[: int(limit_train)]
+        if limit_test is not None:
+            test_indices = test_indices[: int(limit_test)]
+        if not train_indices or not test_indices:
+            raise ValueError("Train and test splits must both be non-empty.")
 
-            for shots in shots_values:
-                logger.info(
-                    "Running quantum affinity seed=%s r=%s shots=%s simulator=%s train=%s test=%s.",
-                    seed,
-                    rank,
-                    shots,
-                    simulator,
-                    len(train_indices),
-                    len(test_indices),
-                )
-                estimator = SwapTestOverlapEstimator(
-                    shots=shots,
-                    simulator=simulator,
-                    seed=_setting_seed(seed=seed, rank=rank, shots=shots),
-                    cache=cache_overlaps,
-                )
-                classify_start = perf_counter()
-                distance_matrix = pairwise_quantum_subspace_affinity_distances(
-                    test_bases,
-                    train_bases,
-                    estimator=estimator,
-                    normalization=affinity_normalization,
-                )
-                result = predict_1nn_from_distances(distance_matrix, y_train)
-                runtime = extraction_runtime + (perf_counter() - classify_start)
+        extract_start = perf_counter()
+        train_subspaces = _compute_indexed_subspaces(
+            dataset,
+            train_indices,
+            rank=rank,
+            center_sequence=center_sequence,
+            min_frames_required=required_frames,
+            feature_mode=feature_mode,
+            dataset_config=dataset_config,
+            subspace_cache=subspace_cache,
+        )
+        test_subspaces = _compute_indexed_subspaces(
+            dataset,
+            test_indices,
+            rank=rank,
+            center_sequence=center_sequence,
+            min_frames_required=required_frames,
+            feature_mode=feature_mode,
+            dataset_config=dataset_config,
+            subspace_cache=subspace_cache,
+        )
+        train_bases = stack_bases(train_subspaces)
+        test_bases = stack_bases(test_subspaces)
+        y_train = dataset.labels[train_indices]
+        y_test = dataset.labels[test_indices]
+        extraction_runtime = perf_counter() - extract_start
 
-                row = {
-                    "dataset": dataset.dataset,
-                    "seed": seed,
-                    "feature_mode": feature_mode,
-                    "r": rank,
-                    "shots": shots,
-                    "overlap_method": "swap_test",
-                    "simulator": simulator,
-                    "affinity_normalization": affinity_normalization,
-                    "subset": subset_enabled,
-                    "train_per_class": train_per_class if subset_enabled else "",
-                    "test_per_class": test_per_class if subset_enabled else "",
-                    "accuracy": round(accuracy(y_test, result.predictions), 6),
-                    "macro_f1": round(macro_f1(y_test, result.predictions), 6),
-                    "runtime_sec": round(runtime, 6),
-                    "train_size": len(train_indices),
-                    "test_size": len(test_indices),
-                    "num_overlap_estimates": estimator.num_estimates,
-                    "num_cache_hits": estimator.num_cache_hits,
-                    "git_commit": git_commit,
-                    "timestamp": timestamp,
-                }
-                rows.append(row)
-                logger.info(
-                    "seed=%s r=%s shots=%s accuracy=%.4f macro_f1=%.4f runtime=%.2fs",
-                    seed,
-                    rank,
-                    shots,
-                    row["accuracy"],
-                    row["macro_f1"],
-                    row["runtime_sec"],
-                )
+        for shots in shots_values:
+            logger.info(
+                "Running quantum affinity seed=%s r=%s shots=%s simulator=%s train=%s test=%s.",
+                seed,
+                rank,
+                shots,
+                simulator,
+                len(train_indices),
+                len(test_indices),
+            )
+            estimator = SwapTestOverlapEstimator(
+                shots=shots,
+                simulator=simulator,
+                seed=_setting_seed(seed=seed, rank=rank, shots=shots),
+                cache=cache_overlaps,
+            )
+            classify_start = perf_counter()
+            distance_matrix = pairwise_quantum_subspace_affinity_distances(
+                test_bases,
+                train_bases,
+                estimator=estimator,
+                normalization=affinity_normalization,
+            )
+            result = predict_1nn_from_distances(distance_matrix, y_train)
+            runtime = extraction_runtime + (perf_counter() - classify_start)
 
+            row = {
+                "dataset": dataset.dataset,
+                "seed": seed,
+                "feature_mode": feature_mode,
+                "r": rank,
+                "shots": shots,
+                "overlap_method": "swap_test",
+                "simulator": simulator,
+                "affinity_normalization": affinity_normalization,
+                "subset": subset_enabled,
+                "train_per_class": train_per_class if subset_enabled else "",
+                "test_per_class": test_per_class if subset_enabled else "",
+                "accuracy": round(accuracy(y_test, result.predictions), 6),
+                "macro_f1": round(macro_f1(y_test, result.predictions), 6),
+                "runtime_sec": round(runtime, 6),
+                "train_size": len(train_indices),
+                "test_size": len(test_indices),
+                "num_overlap_estimates": estimator.num_estimates,
+                "num_cache_hits": estimator.num_cache_hits,
+                "git_commit": git_commit,
+                "timestamp": timestamp,
+            }
+            rows.append(row)
+            logger.info(
+                "seed=%s r=%s shots=%s accuracy=%.4f macro_f1=%.4f runtime=%.2fs",
+                seed,
+                rank,
+                shots,
+                row["accuracy"],
+                row["macro_f1"],
+                row["runtime_sec"],
+            )
     return rows
 
 
@@ -274,6 +393,7 @@ def summarize_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
     for row in rows:
         key = (
             str(row["dataset"]),
+            str(row["feature_mode"]),
             int(row["r"]),
             int(row["shots"]),
             str(row["overlap_method"]),
@@ -286,6 +406,7 @@ def summarize_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
     summary_rows: list[dict[str, Any]] = []
     for (
         dataset,
+        feature_mode,
         rank,
         shots,
         overlap_method,
@@ -299,6 +420,7 @@ def summarize_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
         summary_rows.append(
             {
                 "dataset": dataset,
+                "feature_mode": feature_mode,
                 "r": rank,
                 "shots": shots,
                 "overlap_method": overlap_method,
@@ -347,6 +469,13 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--limit-train", type=int, default=None)
     parser.add_argument("--limit-test", type=int, default=None)
     parser.add_argument("--no-cache-overlaps", action="store_true")
+    parser.add_argument("--no-cache-subspaces", action="store_true")
+    parser.add_argument(
+        "--num-workers",
+        type=int,
+        default=1,
+        help="Number of multiprocessing workers for seed-level parallelism.",
+    )
     parser.add_argument(
         "--feature-mode",
         nargs="+",
@@ -378,18 +507,37 @@ def _compute_indexed_subspaces(
     min_frames_required: int,
     feature_mode: str = "position",
     dataset_config: dict[str, Any] | None = None,
+    subspace_cache: SubspaceBasisCache | None = None,
 ):
+    if subspace_cache is not None:
+        return [
+            subspace_cache.get(
+                int(index),
+                rank=rank,
+                center_sequence=center_sequence,
+                min_frames_required=min_frames_required,
+                feature_mode=feature_mode,
+            )
+            for index in indices
+        ]
+
     sequences = [
         apply_feature_mode(dataset.sequences[index], feature_mode, dataset_config)
         for index in indices
     ]
-    return compute_subspaces(
-        sequences,
-        [dataset.sequence_ids[index] for index in indices],
-        rank=rank,
-        center_sequence=center_sequence,
-        min_frames_required=min_frames_required,
-    )
+    return [
+        compute_sequence_subspace(
+            sequence,
+            rank=rank,
+            sequence_id=sequence_id,
+            center_sequence=center_sequence,
+            min_frames_required=min_frames_required,
+        )
+        for sequence, sequence_id in zip(
+            sequences,
+            [dataset.sequence_ids[index] for index in indices],
+        )
+    ]
 
 
 def _select_per_class(
@@ -452,6 +600,13 @@ def _validate_affinity_normalization(value: str) -> None:
             f"Unknown affinity normalization '{value}'. "
             f"Known values: {', '.join(AFFINITY_NORMALIZATIONS)}."
         )
+
+
+def _multiprocessing_context():
+    try:
+        return get_context("fork")
+    except ValueError:
+        return get_context()
 
 
 def _resolve_path(path: str | Path) -> Path:
