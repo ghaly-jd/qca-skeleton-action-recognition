@@ -23,6 +23,7 @@ from src.distances.quantum_estimated_angles import (
 from src.eval.knn import predict_1nn_from_distances
 from src.eval.metrics import accuracy, macro_f1
 from src.eval.result_writer import get_git_commit, utc_timestamp
+from src.features.motion_features import apply_feature_mode
 from src.features.sequence_subspace import compute_subspaces, stack_bases
 from src.quantum.overlap_estimation import SwapTestOverlapEstimator
 from src.utils.io import read_json, read_yaml, write_csv_rows
@@ -33,6 +34,7 @@ from src.utils.paths import project_path
 RESULT_FIELDNAMES = [
     "dataset",
     "seed",
+    "feature_mode",
     "r",
     "shots",
     "overlap_method",
@@ -86,25 +88,31 @@ def main() -> None:
     train_per_class = args.train_per_class or quantum_config["subset"]["train_per_class"]
     test_per_class = args.test_per_class or quantum_config["subset"]["test_per_class"]
 
+    feature_modes = args.feature_mode or ["position"]
     processed_dir = _resolve_path(dataset_config["dataset"]["processed_dir"])
     dataset = load_processed_dataset(processed_dir)
-    rows = run_experiment(
-        dataset,
-        seeds=[int(seed) for seed in seeds],
-        r_values=[int(rank) for rank in r_values],
-        shots_values=[int(shots) for shots in shots_values],
-        simulator=simulator,
-        subset_enabled=subset_enabled,
-        train_per_class=int(train_per_class),
-        test_per_class=int(test_per_class),
-        min_frames_required=int(main_config["subspace"]["min_frames_required"]),
-        center_sequence=bool(main_config["subspace"]["center_sequence"]),
-        affinity_normalization=args.affinity_normalization,
-        limit_train=args.limit_train,
-        limit_test=args.limit_test,
-        cache_overlaps=not args.no_cache_overlaps,
-        logger=logger,
-    )
+    rows = []
+    for feature_mode in feature_modes:
+        logger.info("Running feature_mode=%s", feature_mode)
+        rows.extend(run_experiment(
+            dataset,
+            seeds=[int(seed) for seed in seeds],
+            r_values=[int(rank) for rank in r_values],
+            shots_values=[int(shots) for shots in shots_values],
+            feature_mode=feature_mode,
+            dataset_config=dataset_config,
+            simulator=simulator,
+            subset_enabled=subset_enabled,
+            train_per_class=int(train_per_class),
+            test_per_class=int(test_per_class),
+            min_frames_required=int(main_config["subspace"]["min_frames_required"]),
+            center_sequence=bool(main_config["subspace"]["center_sequence"]),
+            affinity_normalization=args.affinity_normalization,
+            limit_train=args.limit_train,
+            limit_test=args.limit_test,
+            cache_overlaps=not args.no_cache_overlaps,
+            logger=logger,
+        ))
 
     output_path = _resolve_path(args.output)
     write_csv_rows(output_path, rows, fieldnames=RESULT_FIELDNAMES)
@@ -122,6 +130,8 @@ def run_experiment(
     seeds: list[int],
     r_values: list[int],
     shots_values: list[int],
+    feature_mode: str = "position",
+    dataset_config: dict[str, Any] | None = None,
     simulator: str,
     subset_enabled: bool,
     train_per_class: int,
@@ -179,6 +189,8 @@ def run_experiment(
                 rank=rank,
                 center_sequence=center_sequence,
                 min_frames_required=required_frames,
+                feature_mode=feature_mode,
+                dataset_config=dataset_config,
             )
             test_subspaces = _compute_indexed_subspaces(
                 dataset,
@@ -186,6 +198,8 @@ def run_experiment(
                 rank=rank,
                 center_sequence=center_sequence,
                 min_frames_required=required_frames,
+                feature_mode=feature_mode,
+                dataset_config=dataset_config,
             )
             train_bases = stack_bases(train_subspaces)
             test_bases = stack_bases(test_subspaces)
@@ -222,6 +236,7 @@ def run_experiment(
                 row = {
                     "dataset": dataset.dataset,
                     "seed": seed,
+                    "feature_mode": feature_mode,
                     "r": rank,
                     "shots": shots,
                     "overlap_method": "swap_test",
@@ -333,6 +348,17 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--limit-test", type=int, default=None)
     parser.add_argument("--no-cache-overlaps", action="store_true")
     parser.add_argument(
+        "--feature-mode",
+        nargs="+",
+        default=None,
+        metavar="MODE",
+        help=(
+            "Feature mode(s) to evaluate (default: position). "
+            "One or more of: position velocity acceleration "
+            "position_velocity bone_vectors bone_velocity."
+        ),
+    )
+    parser.add_argument(
         "--output",
         default="results/raw/quantum_subspace_affinity.csv",
     )
@@ -350,9 +376,15 @@ def _compute_indexed_subspaces(
     rank: int,
     center_sequence: bool,
     min_frames_required: int,
+    feature_mode: str = "position",
+    dataset_config: dict[str, Any] | None = None,
 ):
+    sequences = [
+        apply_feature_mode(dataset.sequences[index], feature_mode, dataset_config)
+        for index in indices
+    ]
     return compute_subspaces(
-        [dataset.sequences[index] for index in indices],
+        sequences,
         [dataset.sequence_ids[index] for index in indices],
         rank=rank,
         center_sequence=center_sequence,

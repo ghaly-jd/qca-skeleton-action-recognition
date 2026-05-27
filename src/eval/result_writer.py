@@ -16,6 +16,7 @@ from src.utils.paths import ensure_parent_dir
 RESULT_FIELDNAMES = [
     "dataset",
     "method",
+    "feature_mode",
     "seed",
     "parameters",
     "accuracy",
@@ -25,6 +26,22 @@ RESULT_FIELDNAMES = [
     "timestamp",
 ]
 
+#: Valid values for ``feature_mode``.
+#: - ``"position"``         — raw joint positions (T × D); default and backward-compatible.
+#: - ``"velocity"``         — first-order temporal differences (T × D).
+#: - ``"acceleration"``     — second-order temporal differences (T × D).
+#: - ``"position_velocity"``— position concatenated with velocity (T × 2D).
+#: - ``"bone_vectors"``     — child-minus-parent joint offsets (T × n_bones*3).
+#: - ``"bone_velocity"``    — bone vectors concatenated with their velocity.
+VALID_FEATURE_MODES = (
+    "position",
+    "velocity",
+    "acceleration",
+    "position_velocity",
+    "bone_vectors",
+    "bone_velocity",
+)
+
 
 @dataclass(frozen=True)
 class ResultRecord:
@@ -33,6 +50,9 @@ class ResultRecord:
     dataset: str
     method: str
     seed: int | None
+    #: Which feature representation was used. Default ``"position"`` for backward
+    #: compatibility with existing result CSVs produced before this field existed.
+    feature_mode: str = "position"
     parameters: dict[str, Any] = field(default_factory=dict)
     accuracy: float | None = None
     macro_f1: float | None = None

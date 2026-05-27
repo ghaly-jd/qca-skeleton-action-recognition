@@ -27,6 +27,7 @@ def main() -> None:
         ResultRecord(
             dataset="setup",
             method="phase0_smoke_check",
+            feature_mode="position",
             seed=seed_state.seed,
             parameters={
                 "project_root": str(PROJECT_ROOT),

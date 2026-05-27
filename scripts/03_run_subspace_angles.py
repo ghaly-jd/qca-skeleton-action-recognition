@@ -21,6 +21,7 @@ from src.distances.subspace_distances import DISTANCE_NAMES, distance_from_singu
 from src.eval.knn import predict_1nn_from_distances
 from src.eval.metrics import accuracy, macro_f1
 from src.eval.result_writer import get_git_commit, utc_timestamp
+from src.features.motion_features import apply_feature_mode
 from src.features.sequence_subspace import compute_subspaces, stack_bases
 from src.utils.io import read_json, read_yaml, write_csv_rows
 from src.utils.logging import get_logger
@@ -30,6 +31,7 @@ from src.utils.paths import ensure_parent_dir, project_path
 RESULT_FIELDNAMES = [
     "dataset",
     "seed",
+    "feature_mode",
     "r",
     "distance",
     "accuracy",
@@ -68,19 +70,25 @@ def main() -> None:
     seeds = args.seeds or experiment_config["seeds"]
     _validate_distances(distances)
 
+    feature_modes = args.feature_mode or ["position"]
     processed_dir = _resolve_path(dataset_config["dataset"]["processed_dir"])
     dataset = load_processed_dataset(processed_dir)
-    rows = run_experiment(
-        dataset,
-        seeds=[int(seed) for seed in seeds],
-        r_values=[int(rank) for rank in r_values],
-        distances=distances,
-        min_frames_required=int(experiment_config["subspace"]["min_frames_required"]),
-        center_sequence=bool(experiment_config["subspace"]["center_sequence"]),
-        feature_standardization=args.feature_standardization,
-        frame_l2_normalization=args.l2_normalize_frames,
-        logger=logger,
-    )
+    rows = []
+    for feature_mode in feature_modes:
+        logger.info("Running feature_mode=%s", feature_mode)
+        rows.extend(run_experiment(
+            dataset,
+            seeds=[int(seed) for seed in seeds],
+            r_values=[int(rank) for rank in r_values],
+            distances=distances,
+            feature_mode=feature_mode,
+            dataset_config=dataset_config,
+            min_frames_required=int(experiment_config["subspace"]["min_frames_required"]),
+            center_sequence=bool(experiment_config["subspace"]["center_sequence"]),
+            feature_standardization=args.feature_standardization,
+            frame_l2_normalization=args.l2_normalize_frames,
+            logger=logger,
+        ))
 
     output_path = _resolve_path(args.output)
     write_csv_rows(output_path, rows, fieldnames=RESULT_FIELDNAMES)
@@ -115,6 +123,8 @@ def run_experiment(
     seeds: list[int],
     r_values: list[int],
     distances: list[str],
+    feature_mode: str = "position",
+    dataset_config: dict[str, Any] | None = None,
     min_frames_required: int,
     center_sequence: bool,
     feature_standardization: str,
@@ -159,6 +169,8 @@ def run_experiment(
                 min_frames_required=required_frames,
                 feature_standardization=feature_standardization,
                 frame_l2_normalization=frame_l2_normalization,
+                feature_mode=feature_mode,
+                dataset_config=dataset_config,
             )
             test_subspaces = _compute_indexed_subspaces(
                 dataset,
@@ -168,6 +180,8 @@ def run_experiment(
                 min_frames_required=required_frames,
                 feature_standardization=feature_standardization,
                 frame_l2_normalization=frame_l2_normalization,
+                feature_mode=feature_mode,
+                dataset_config=dataset_config,
             )
             train_bases = stack_bases(train_subspaces)
             test_bases = stack_bases(test_subspaces)
@@ -192,6 +206,7 @@ def run_experiment(
                 row = {
                     "dataset": dataset.dataset,
                     "seed": seed,
+                    "feature_mode": feature_mode,
                     "r": rank,
                     "distance": distance,
                     "accuracy": round(accuracy(y_test, result.predictions), 6),
@@ -280,6 +295,17 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--seeds", nargs="+", type=int, default=None)
     parser.add_argument("--feature-standardization", default="none")
     parser.add_argument("--l2-normalize-frames", action="store_true")
+    parser.add_argument(
+        "--feature-mode",
+        nargs="+",
+        default=None,
+        metavar="MODE",
+        help=(
+            "Feature mode(s) to evaluate (default: position). "
+            "One or more of: position velocity acceleration "
+            "position_velocity bone_vectors bone_velocity."
+        ),
+    )
     parser.add_argument("--output", default="results/raw/canonical_angles_exact.csv")
     parser.add_argument(
         "--summary-output",
@@ -299,9 +325,15 @@ def _compute_indexed_subspaces(
     min_frames_required: int,
     feature_standardization: str,
     frame_l2_normalization: bool,
+    feature_mode: str = "position",
+    dataset_config: dict[str, Any] | None = None,
 ):
+    sequences = [
+        apply_feature_mode(dataset.sequences[index], feature_mode, dataset_config)
+        for index in indices
+    ]
     return compute_subspaces(
-        [dataset.sequences[index] for index in indices],
+        sequences,
         [dataset.sequence_ids[index] for index in indices],
         rank=rank,
         center_sequence=center_sequence,

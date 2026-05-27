@@ -12,7 +12,7 @@ split:
   protocol: cross_subject
   train_subjects: [1, 3, 5, 7, 9]
   test_subjects: [2, 4, 6, 8, 10]
-  seeds: [0, 1, 2, 3, 4]
+  seeds: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
 
 preprocessing:
   remove_invalid_frames: true
@@ -22,4 +22,33 @@ preprocessing:
   feature_standardization: none
   l2_normalize_frames: false
   sequence_centering: true
+
+# MSR Action3D 20-joint skeleton bone hierarchy.
+# Each entry is [parent_joint_index, child_joint_index] (0-based).
+# Joint ordering: 0=Hip, 1=Spine, 2=ShoulderCenter, 3=Head,
+#   4=LShoulder, 5=LElbow, 6=LWrist, 7=LHand,
+#   8=RShoulder, 9=RElbow, 10=RWrist, 11=RHand,
+#   12=LHip, 13=LKnee, 14=LAnkle, 15=LFoot,
+#   16=RHip, 17=RKnee, 18=RAnkle, 19=RFoot
+# 19 bones total (one tree edge per non-root joint).
+bone_hierarchy:
+  - [0, 1]    # Hip -> Spine
+  - [1, 2]    # Spine -> ShoulderCenter
+  - [2, 3]    # ShoulderCenter -> Head
+  - [2, 4]    # ShoulderCenter -> LShoulder
+  - [4, 5]    # LShoulder -> LElbow
+  - [5, 6]    # LElbow -> LWrist
+  - [6, 7]    # LWrist -> LHand
+  - [2, 8]    # ShoulderCenter -> RShoulder
+  - [8, 9]    # RShoulder -> RElbow
+  - [9, 10]   # RElbow -> RWrist
+  - [10, 11]  # RWrist -> RHand
+  - [0, 12]   # Hip -> LHip
+  - [12, 13]  # LHip -> LKnee
+  - [13, 14]  # LKnee -> LAnkle
+  - [14, 15]  # LAnkle -> LFoot
+  - [0, 16]   # Hip -> RHip
+  - [16, 17]  # RHip -> RKnee
+  - [17, 18]  # RKnee -> RAnkle
+  - [18, 19]  # RAnkle -> RFoot
 

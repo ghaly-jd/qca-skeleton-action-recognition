@@ -20,6 +20,7 @@ from src.distances.dtw import pairwise_dtw_distances, window_ratio_label
 from src.eval.knn import predict_1nn_from_distances
 from src.eval.metrics import accuracy, macro_f1
 from src.eval.result_writer import get_git_commit, utc_timestamp
+from src.features.motion_features import apply_feature_mode
 from src.features.pca_projection import fit_pca_from_sequences
 from src.utils.io import read_json, read_yaml, write_csv_rows
 from src.utils.logging import get_logger
@@ -30,6 +31,7 @@ RESULT_FIELDNAMES = [
     "dataset",
     "seed",
     "method",
+    "feature_mode",
     "pca_k",
     "backend",
     "device",
@@ -77,22 +79,28 @@ def main() -> None:
         window_ratios = experiment_config["dtw"]["window_ratios"]
     pca_k_values = args.pca_k_values or experiment_config["pca_dtw"]["k_values"]
 
+    feature_modes = args.feature_mode or ["position"]
     processed_dir = _resolve_path(dataset_config["dataset"]["processed_dir"])
     dataset = load_processed_dataset(processed_dir)
-    rows = run_experiment(
-        dataset,
-        seeds=[int(seed) for seed in seeds],
-        methods=args.methods,
-        window_ratios=window_ratios,
-        pca_k_values=[int(k) for k in pca_k_values],
-        normalize_by_path_length=not args.no_path_length_normalization,
-        backend=args.backend,
-        device=args.device,
-        dtype=args.torch_dtype,
-        limit_train=args.limit_train,
-        limit_test=args.limit_test,
-        logger=logger,
-    )
+    rows = []
+    for feature_mode in feature_modes:
+        logger.info("Running feature_mode=%s", feature_mode)
+        rows.extend(run_experiment(
+            dataset,
+            seeds=[int(seed) for seed in seeds],
+            methods=args.methods,
+            feature_mode=feature_mode,
+            dataset_config=dataset_config,
+            window_ratios=window_ratios,
+            pca_k_values=[int(k) for k in pca_k_values],
+            normalize_by_path_length=not args.no_path_length_normalization,
+            backend=args.backend,
+            device=args.device,
+            dtype=args.torch_dtype,
+            limit_train=args.limit_train,
+            limit_test=args.limit_test,
+            logger=logger,
+        ))
 
     output_path = _resolve_path(args.output)
     write_csv_rows(output_path, rows, fieldnames=RESULT_FIELDNAMES)
@@ -119,6 +127,8 @@ def run_experiment(
     *,
     seeds: list[int],
     methods: list[str],
+    feature_mode: str = "position",
+    dataset_config: dict[str, Any] | None = None,
     window_ratios: list[Any],
     pca_k_values: list[int],
     normalize_by_path_length: bool,
@@ -145,8 +155,10 @@ def run_experiment(
         if not train_indices or not test_indices:
             raise ValueError("Train and test splits must both be non-empty.")
 
-        train_sequences = [dataset.sequences[index] for index in train_indices]
-        test_sequences = [dataset.sequences[index] for index in test_indices]
+        raw_train = [dataset.sequences[index] for index in train_indices]
+        raw_test = [dataset.sequences[index] for index in test_indices]
+        train_sequences = [apply_feature_mode(X, feature_mode, dataset_config) for X in raw_train]
+        test_sequences = [apply_feature_mode(X, feature_mode, dataset_config) for X in raw_test]
         y_train = dataset.labels[train_indices]
         y_test = dataset.labels[test_indices]
 
@@ -156,6 +168,7 @@ def run_experiment(
                     _run_one_dtw_setting(
                         dataset_name=dataset.dataset,
                         seed=seed,
+                        feature_mode=feature_mode,
                         method="raw_dtw",
                         pca_k="",
                         train_sequences=train_sequences,
@@ -198,6 +211,7 @@ def run_experiment(
                         _run_one_dtw_setting(
                             dataset_name=dataset.dataset,
                             seed=seed,
+                            feature_mode=feature_mode,
                             method="pca_dtw",
                             pca_k=pca_k,
                             train_sequences=train_projected,
@@ -223,6 +237,7 @@ def _run_one_dtw_setting(
     *,
     dataset_name: str,
     seed: int,
+    feature_mode: str = "position",
     method: str,
     pca_k: int | str,
     train_sequences: list[np.ndarray],
@@ -267,6 +282,7 @@ def _run_one_dtw_setting(
         "dataset": dataset_name,
         "seed": seed,
         "method": method,
+        "feature_mode": feature_mode,
         "pca_k": pca_k,
         "backend": backend,
         "device": _device_label(backend, device),
@@ -380,6 +396,17 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--limit-train", type=int, default=None)
     parser.add_argument("--limit-test", type=int, default=None)
+    parser.add_argument(
+        "--feature-mode",
+        nargs="+",
+        default=None,
+        metavar="MODE",
+        help=(
+            "Feature mode(s) to evaluate (default: position). "
+            "One or more of: position velocity acceleration "
+            "position_velocity bone_vectors bone_velocity."
+        ),
+    )
     parser.add_argument("--output", default="results/raw/dtw_baselines.csv")
     parser.add_argument(
         "--summary-output",
