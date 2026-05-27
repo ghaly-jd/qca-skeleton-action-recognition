@@ -35,7 +35,7 @@ After each step, also append to the **Decision Log** at the bottom if you made a
 
 | Phase | Title | Status | Steps Done / Total | Gate |
 | --- | --- | --- | --- | --- |
-| 1 | Methodology Lockdown | In progress | 12 / 25 | Phase 1 acceptance (Step 1.25) |
+| 1 | Methodology Lockdown | In progress | 13 / 25 | Phase 1 acceptance (Step 1.25) |
 | 2 | Few-Shot Centerpiece | Not started | 0 / 14 | Phase 2 acceptance (Step 2.14) |
 | 3 | Mechanism + Generalization | Not started | 0 / 18 | None (continues into Phase 4) |
 | 4 | Paper + Polish | Not started | 0 / 13 | Submission (Step 4.13) |
@@ -58,7 +58,7 @@ After each step, also append to the **Decision Log** at the bottom if you made a
 | 1.10 | Implement MLP baseline | Done | src/baselines/mlp.py, src/baselines/__init__.py, tests/test_mlp_baseline.py (2 passed); pytest (107 passed, 2 skipped) | |
 | 1.11 | Implement LSTM baseline | Done | src/baselines/lstm.py, tests/test_lstm_baseline.py (1 passed); pytest (108 passed, 2 skipped) | Uses packed padded sequences |
 | 1.12 | Implement Random Forest baseline | Done | src/baselines/random_forest.py, tests/test_random_forest_baseline.py (2 passed); pytest (110 passed, 2 skipped) | |
-| 1.13 | Implement KDTW baseline | Not started | | |
+| 1.13 | Implement KDTW baseline | Done | src/baselines/kdtw.py, tests/test_kdtw_baseline.py (4 passed); pytest (114 passed, 2 skipped) | |
 | 1.14 | Implement GAK baseline | Not started | | Optional |
 | 1.15 | Add `scripts/09_run_classical_baselines.py` | Not started | | |
 | 1.16 | Profile and optimize quantum simulation | Not started | | |
@@ -153,6 +153,7 @@ Append a row to this table whenever a non-obvious choice is made (e.g., choosing
 | 2026-05-27 | Standardize pooled MLP features before training | Mean/max/std pooled skeleton features can live on different scales; standardization makes the learned baseline more stable | 1.10 |
 | 2026-05-27 | Standardize LSTM frame features before packed-sequence training | Skeleton feature scales vary by mode; per-frame standardization keeps the learned sequence baseline numerically stable | 1.11 |
 | 2026-05-27 | Compute Random Forest pairwise correlations over top-varying joint-motion magnitude series | Keeps correlation features fixed-size for MSR-style `x,y,z` joints while still supporting non-3D feature modes | 1.12 |
+| 2026-05-27 | Use normalized RBF-local KDTW similarity for the KDTW 1-NN baseline | Normalization makes self-similarity exactly 1.0 and gives a stable kernel distance for nearest-neighbor classification | 1.13 |
 
 ---
 
