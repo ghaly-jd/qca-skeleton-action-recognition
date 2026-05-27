@@ -1,9 +1,27 @@
-"""Dynamic time warping over sequences of local motion subspaces."""
+"""Dynamic time warping over sequences of local motion subspaces.
+
+Two-level API
+-------------
+**High-level (new in Phase 1):**
+
+``local_sdtw_distance(X, Y, window_size, stride, rank, overlap_fn)``
+    Accepts raw ``(T, D)`` numpy arrays.  Extracts sliding-window local subspace
+    bases via SVD internally, then runs DTW.  The ``overlap_fn`` is a
+    ``(D,) x (D,) -> float`` callable that estimates ``|<u|v>|^2``: pass
+    ``lambda u, v: (u @ v) ** 2`` for the exact path, or a SWAP-test estimator
+    for the quantum path.
+
+**Lower-level (existing, kept for backward compatibility):**
+
+``local_sdtw_distance_from_subspaces(sequence_x, sequence_y, ...)``
+    Accepts pre-computed ``LocalSubspaceSequence`` objects.  Used by the CUDA
+    batch path in ``scripts/06_run_local_sdtw.py``.
+"""
 
 from __future__ import annotations
 
 import math
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from typing import Any
 
 import numpy as np
@@ -65,7 +83,218 @@ def local_subspace_cost_matrix(
     return costs
 
 
+def _resolve_dtw_window(
+    *,
+    dtw_window: WindowRatio,
+    window_ratio: WindowRatio,
+) -> WindowRatio:
+    """Resolve the new ``dtw_window`` name and legacy ``window_ratio`` name."""
+    if dtw_window is not None and window_ratio is not None:
+        if normalize_window_ratio(dtw_window) != normalize_window_ratio(window_ratio):
+            raise ValueError("Specify only one of dtw_window or window_ratio.")
+    if dtw_window is not None:
+        return dtw_window
+    return window_ratio
+
+
 def local_sdtw_distance(
+    X: np.ndarray | LocalSubspaceSequence,
+    Y: np.ndarray | LocalSubspaceSequence,
+    window_size: int | None = None,
+    stride: int | None = None,
+    rank: int | None = None,
+    overlap_fn: Callable[[np.ndarray, np.ndarray], float] | None = None,
+    *,
+    dtw_window: WindowRatio = None,
+    window_ratio: WindowRatio = None,
+    normalize_by_path_length: bool = True,
+    metric: str = "projection_affinity",
+    affinity_normalization: str = "projection_frobenius",
+) -> float:
+    """Local Subspace-DTW distance between two raw skeleton sequences.
+
+    This is the **primary public API** for Local-SDTW.  It accepts raw
+    ``(T, D)`` arrays, extracts overlapping local windows, computes a rank-``rank``
+    SVD subspace basis for each window, builds a cost matrix using
+    ``overlap_fn``, and returns path-length-normalized DTW distance.
+
+    For backward compatibility, this function also accepts two
+    ``LocalSubspaceSequence`` objects and delegates to
+    :func:`local_sdtw_distance_from_subspaces`.
+
+    Parameters
+    ----------
+    X:
+        Sequence of shape ``(T1, D)``.
+    Y:
+        Sequence of shape ``(T2, D)``.
+    window_size:
+        Number of frames per local window.
+    stride:
+        Step between successive window start positions.
+    rank:
+        Number of top singular vectors to keep per window.
+    overlap_fn:
+        A ``(D,) x (D,) -> float`` callable that estimates the squared overlap
+        ``|<u|v>|^2`` between two unit vectors ``u`` and ``v``.
+        For the exact path use ``lambda u, v: float((u @ v) ** 2)``.
+        For the quantum-estimated path pass a SWAP-test estimator.
+    dtw_window:
+        Sakoe-Chiba window ratio (fraction of max sequence length).
+        ``None`` means unconstrained DTW.
+    normalize_by_path_length:
+        Whether to divide the accumulated cost by the alignment path length.
+
+    Returns
+    -------
+    float
+        Local-SDTW distance, non-negative and finite.
+    """
+    resolved_window = _resolve_dtw_window(dtw_window=dtw_window, window_ratio=window_ratio)
+    x_is_subspaces = isinstance(X, LocalSubspaceSequence)
+    y_is_subspaces = isinstance(Y, LocalSubspaceSequence)
+    if x_is_subspaces or y_is_subspaces:
+        if not (x_is_subspaces and y_is_subspaces):
+            raise ValueError(
+                "X and Y must both be raw arrays or both be LocalSubspaceSequence objects."
+            )
+        return local_sdtw_distance_from_subspaces(
+            X,
+            Y,
+            metric=metric,
+            affinity_normalization=affinity_normalization,
+            normalize_by_path_length=normalize_by_path_length,
+            window_ratio=resolved_window,
+        )
+
+    if window_size is None or stride is None or rank is None or overlap_fn is None:
+        raise ValueError(
+            "Raw-array Local-SDTW requires window_size, stride, rank, and overlap_fn."
+        )
+
+    X = np.asarray(X, dtype=float)
+    Y = np.asarray(Y, dtype=float)
+    bases_x = _extract_local_bases(
+        X,
+        window_size=int(window_size),
+        stride=int(stride),
+        rank=int(rank),
+    )
+    bases_y = _extract_local_bases(
+        Y,
+        window_size=int(window_size),
+        stride=int(stride),
+        rank=int(rank),
+    )
+
+    cost_matrix = _build_cost_matrix(
+        bases_x,
+        bases_y,
+        overlap_fn=overlap_fn,
+        rank=int(rank),
+    )
+    return dtw_distance_from_cost_matrix(
+        cost_matrix,
+        normalize_by_path_length=normalize_by_path_length,
+        window_ratio=resolved_window,
+    )
+
+
+def _extract_local_bases(
+    X: np.ndarray,
+    *,
+    window_size: int,
+    stride: int,
+    rank: int,
+) -> np.ndarray:
+    """Extract SVD subspace bases for overlapping local windows.
+
+    Parameters
+    ----------
+    X:
+        Sequence of shape ``(T, D)``.
+    window_size, stride, rank:
+        Window and subspace parameters.
+
+    Returns
+    -------
+    np.ndarray
+        Array of shape ``(M, D, rank)`` where ``M`` is the number of windows.
+        Each slice ``[i]`` is a ``(D, rank)`` orthonormal basis matrix.
+    """
+    values = np.asarray(X, dtype=np.float64)
+    if values.ndim != 2:
+        raise ValueError("Local-SDTW inputs must be 2D T x D matrices.")
+    if values.shape[0] == 0 or values.shape[1] == 0:
+        raise ValueError("Local-SDTW inputs must have at least one frame and feature.")
+    if not np.isfinite(values).all():
+        raise ValueError("Local-SDTW inputs must contain only finite values.")
+    if window_size <= 0:
+        raise ValueError("window_size must be positive.")
+    if stride <= 0:
+        raise ValueError("stride must be positive.")
+    if rank <= 0:
+        raise ValueError("rank must be positive.")
+
+    T, D = values.shape
+    if D < rank:
+        raise ValueError(f"feature dimension ({D}) must be at least rank ({rank}).")
+    if rank >= min(window_size, T):
+        raise ValueError(
+            f"rank ({rank}) must be strictly less than each local window length "
+            f"(min(window_size, T)={min(window_size, T)})."
+        )
+    starts = list(range(0, max(1, T - window_size + 1), stride))
+    bases = []
+    for start in starts:
+        window = values[start : start + window_size]
+        centered = window - window.mean(axis=0, keepdims=True)
+        _, _, Vt = np.linalg.svd(centered, full_matrices=False)
+        basis = Vt[:rank].T
+        bases.append(basis)
+    if not bases:
+        raise ValueError(
+            f"No local windows extracted (T={T}, window_size={window_size}, stride={stride})."
+        )
+    return np.stack(bases, axis=0)  # (M, D, rank)
+
+
+def _build_cost_matrix(
+    bases_x: np.ndarray,
+    bases_y: np.ndarray,
+    *,
+    overlap_fn: Callable[[np.ndarray, np.ndarray], float],
+    rank: int,
+) -> np.ndarray:
+    """Build an ``M1 x M2`` projection-affinity cost matrix.
+
+    ``cost[i, j] = 1 - affinity(bases_x[i], bases_y[j])``
+    where ``affinity(U, V) = sum_{a,b} overlap_fn(U[:,a], V[:,b]) / rank``.
+    """
+    if bases_x.ndim != 3 or bases_y.ndim != 3:
+        raise ValueError("bases_x and bases_y must have shape M x D x rank.")
+    if bases_x.shape[1:] != bases_y.shape[1:]:
+        raise ValueError("bases_x and bases_y must have matching D x rank shapes.")
+    if bases_x.shape[2] != rank:
+        raise ValueError("rank must match the basis rank dimension.")
+
+    M1 = bases_x.shape[0]
+    M2 = bases_y.shape[0]
+    cost_matrix = np.empty((M1, M2), dtype=float)
+    for i in range(M1):
+        U = bases_x[i]  # (D, rank)
+        for j in range(M2):
+            V = bases_y[j]  # (D, rank)
+            total_overlap = 0.0
+            for a in range(rank):
+                for b in range(rank):
+                    total_overlap += float(overlap_fn(U[:, a], V[:, b]))
+            affinity = total_overlap / rank
+            cost_matrix[i, j] = max(0.0, 1.0 - affinity)
+    return cost_matrix
+
+
+def local_sdtw_distance_from_subspaces(
     sequence_x: LocalSubspaceSequence,
     sequence_y: LocalSubspaceSequence,
     *,
@@ -74,7 +303,11 @@ def local_sdtw_distance(
     normalize_by_path_length: bool = True,
     window_ratio: WindowRatio = None,
 ) -> float:
-    """Return Local Subspace-DTW distance between two local subspace sequences."""
+    """Return Local Subspace-DTW distance between two pre-computed subspace sequences.
+
+    This is the **lower-level API** used by the CUDA batch path.  Prefer
+    :func:`local_sdtw_distance` for new code that starts from raw sequences.
+    """
     costs = local_subspace_cost_matrix(
         sequence_x,
         sequence_y,
@@ -126,7 +359,7 @@ def pairwise_local_sdtw_distances(
     distances = np.empty((len(test_sequences), len(train_sequences)), dtype=np.float64)
     for test_index, test_sequence in enumerate(test_sequences):
         for train_index, train_sequence in enumerate(train_sequences):
-            distances[test_index, train_index] = local_sdtw_distance(
+            distances[test_index, train_index] = local_sdtw_distance_from_subspaces(
                 test_sequence,
                 train_sequence,
                 metric=metric,
