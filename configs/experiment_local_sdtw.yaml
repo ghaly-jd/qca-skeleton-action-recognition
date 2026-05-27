@@ -1,0 +1,18 @@
+local_sdtw:
+  feature_modes: [position]
+  window_lengths: [5, 10, 15, 20]
+  strides: [2, 5, 10]
+  r_values: [1, 2, 3, 4, 6]
+  distances: [projection_affinity]
+  dtw_window_ratios: [null, 0.1, 0.2]
+  normalize_by_path_length: true
+  short_sequence_mode: single
+
+smoke:
+  window_lengths: [10]
+  strides: [5]
+  r_values: [2]
+  distances: [projection_affinity]
+  dtw_window_ratios: [null]
+  limit_train: 20
+  limit_test: 10

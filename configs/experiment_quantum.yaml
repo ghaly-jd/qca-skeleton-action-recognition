@@ -15,7 +15,13 @@ subspace_affinity:
   r_values_initial: [2, 3, 4]
   r_values_full: [2, 4, 6, 8]
   shots_initial: [128, 256, 512, 1024]
-  shots_full: [128, 256, 512, 1024, 2048]
+  shots_full: [128, 256, 512, 1024, 2048, 4096]
+
+swap_global_convergence:
+  r_values: [2, 3, 4]
+  shots: [128, 256, 512, 1024, 2048, 4096]
+  train_per_class: 5
+  test_per_class: 3
 
 subset:
   enabled: true
