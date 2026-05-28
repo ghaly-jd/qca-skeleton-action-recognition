@@ -16,11 +16,13 @@ class GAKBaseline:
         *,
         sigma: float = 1.0,
         normalize: bool = True,
+        auto_sigma: bool = False,
     ) -> None:
         if sigma <= 0.0:
             raise ValueError("sigma must be positive.")
         self.sigma = float(sigma)
         self.normalize = bool(normalize)
+        self.auto_sigma = bool(auto_sigma)
 
     def fit(self, X_list: Sequence[np.ndarray], y: Sequence[Any]) -> "GAKBaseline":
         """Store training sequences and labels for 1-NN prediction."""
@@ -33,6 +35,11 @@ class GAKBaseline:
         if labels.size == 0:
             raise ValueError("Cannot fit GAKBaseline on an empty dataset.")
 
+        if self.auto_sigma:
+            self.sigma_ = _estimate_sigma(sequences)
+        else:
+            self.sigma_ = self.sigma
+
         self.train_sequences_ = sequences
         self.train_labels_ = labels
         self.train_self_kernels_ = np.asarray(
@@ -40,7 +47,7 @@ class GAKBaseline:
                 gak_kernel(
                     sequence,
                     sequence,
-                    sigma=self.sigma,
+                    sigma=self.sigma_,
                     normalize=False,
                 )
                 for sequence in sequences
@@ -67,14 +74,14 @@ class GAKBaseline:
             test_self_kernel = gak_kernel(
                 test_sequence,
                 test_sequence,
-                sigma=self.sigma,
+                sigma=self.sigma_,
                 normalize=False,
             )
             for train_index, train_sequence in enumerate(self.train_sequences_):
                 raw_kernel = gak_kernel(
                     test_sequence,
                     train_sequence,
-                    sigma=self.sigma,
+                    sigma=self.sigma_,
                     normalize=False,
                 )
                 if self.normalize:
@@ -100,7 +107,7 @@ class GAKBaseline:
             test_self_kernel = gak_kernel(
                 test_sequence,
                 test_sequence,
-                sigma=self.sigma,
+                sigma=self.sigma_,
                 normalize=False,
             )
             values = (
@@ -226,6 +233,22 @@ def _normalize_kernel(raw_kernel: float, self_x: float, self_y: float) -> float:
         return 0.0
     normalized = float(raw_kernel) / denominator
     return float(np.clip(normalized, 0.0, 1.0))
+
+
+def _estimate_sigma(sequences: list[np.ndarray]) -> float:
+    """Estimate sigma via the median of pairwise frame distances (Cuturi heuristic)."""
+    sample_size = min(len(sequences), 50)
+    rng = np.random.default_rng(0)
+    indices = rng.choice(len(sequences), size=sample_size, replace=False)
+    frames = np.concatenate([sequences[i] for i in indices], axis=0)
+    n_frames = frames.shape[0]
+    sample = frames[rng.choice(n_frames, size=min(n_frames, 2000), replace=False)]
+    diffs = sample[:, None, :] - sample[None, :, :]
+    sq_dists = np.sum(diffs * diffs, axis=2)
+    upper = sq_dists[np.triu_indices(len(sample), k=1)]
+    median_sq = float(np.median(upper))
+    sigma = float(np.sqrt(max(median_sq, 1e-8) / 2.0))
+    return sigma
 
 
 def _validate_pair(

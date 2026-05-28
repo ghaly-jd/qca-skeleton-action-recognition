@@ -238,9 +238,11 @@ def _make_estimator(
         return KDTWBaseline(**parameters), parameters
 
     if method == "gak":
+        auto_sigma = bool(args.gak_auto_sigma)
         parameters = {
             "sigma": float(args.gak_sigma),
             "normalize": not bool(args.no_kernel_normalization),
+            "auto_sigma": auto_sigma,
         }
         return GAKBaseline(**parameters), parameters
 
@@ -291,6 +293,11 @@ def parse_args() -> argparse.Namespace:
 
     parser.add_argument("--kdtw-gamma", type=float, default=1.0)
     parser.add_argument("--gak-sigma", type=float, default=1.0)
+    parser.add_argument(
+        "--gak-auto-sigma",
+        action="store_true",
+        help="Estimate GAK sigma from training data using the median pairwise frame distance heuristic.",
+    )
     parser.add_argument("--no-kernel-normalization", action="store_true")
     return parser.parse_args()
 
