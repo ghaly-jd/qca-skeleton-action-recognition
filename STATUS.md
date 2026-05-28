@@ -1,6 +1,6 @@
 # STATUS — Q-SDTW Research Tracker
 
-**Last updated:** 2026-05-27
+**Last updated:** 2026-05-28
 **Active plan:** `RESEARCH_PROCESS_V2_few_shot_qsdtw.md`
 **Operating guide:** `CLAUDE.md`
 
@@ -62,9 +62,9 @@ After each step, also append to the **Decision Log** at the bottom if you made a
 | 1.14 | Implement GAK baseline | Done | src/baselines/gak.py, tests/test_gak_baseline.py (4 passed); pytest (118 passed, 2 skipped) | Optional step completed |
 | 1.15 | Add `scripts/09_run_classical_baselines.py` | Done | scripts/09_run_classical_baselines.py; /tmp/classical_baselines_step_1_15_smoke.csv (1 row); pytest (118 passed, 2 skipped) | Smoke: `mlp`, seed 0, position |
 | 1.16 | Profile and optimize quantum simulation | Done | src/quantum/overlap_estimation.py, src/distances/quantum_estimated_angles.py, scripts/04_run_quantum_angles_sim.py, results/REPORTS/step_1_16_quantum_profile.md; pytest (119 passed, 2 skipped) | 60x40 rank=2 shots=1024: 1.09s -> 0.0857s; full seed0 rank=2 shots=1024: 0.974s |
-| 1.17 | Run classical baselines (full data, 10 seeds, all feature modes) | Not started | | |
-| 1.18 | Re-run DTW baselines (full data, 10 seeds, all feature modes) | Not started | | |
-| 1.19 | Run Exact Local-SDTW (full data, 10 seeds, all feature modes) | Not started | | |
+| 1.17 | Run classical baselines (full data, 10 seeds, all feature modes) | In progress | results/raw/classical_baselines_phase1.csv (250 rows; no NaNs) | LSTM best mean 0.6902 < 0.70 floor; GAK sigma=1.0 badly calibrated (see blocker). Retune runs pending. |
+| 1.18 | Re-run DTW baselines (full data, 10 seeds, all feature modes) | In progress | results/raw/dtw_baselines_phase1.csv (running) | Launched torch_cpu backend; CUDA sm_86 incompatible with installed PyTorch build |
+| 1.19 | Run Exact Local-SDTW (full data, 10 seeds, all feature modes) | In progress | scripts/16_run_local_sdtw.py | Runner script created; full run not yet launched |
 | 1.20 | Run SWAP Local-SDTW on full data | Not started | | Long run |
 | 1.21 | Aggregate Phase 1 results | Not started | | |
 | 1.22 | Generate Phase 1 comparison figure | Not started | | |
@@ -159,6 +159,9 @@ Append a row to this table whenever a non-obvious choice is made (e.g., choosing
 | 2026-05-27 | Vectorize ideal SWAP sampling for basis stacks while keeping scalar Aer fallback | The paper-track quantum sweeps use ideal shot-noise sampling; circuit simulation still needs the per-overlap scalar path | 1.16 |
 | 2026-05-27 | Add seed-level multiprocessing as an explicit `--num-workers` option | Keeps single-worker runs reproducible by default while allowing Phase 1 sweeps to parallelize across seeds | 1.16 |
 | 2026-05-27 | Include `feature_mode` in quantum summary grouping | Prevents multi-feature quantum runs from averaging different feature representations together | 1.16 |
+| 2026-05-28 | Hold Step 1.17 open pending an LSTM retry or explicit acceptance of the near-miss | The full classical CSV has 250 rows and no NaNs, but LSTM tops out at 0.690 mean accuracy against the 0.70 sanity floor | 1.17 |
+| 2026-05-28 | Add GAKBaseline.auto_sigma (median heuristic) to fix uncalibrated sigma=1.0 | MSR skeleton pairwise distances are >> 1.0; sigma=1.0 degenerates kernel to near-random; median heuristic sigma=median(pairwise)/sqrt(2) gives proper calibration | 1.17 |
+| 2026-05-28 | Deterministic classifiers (KDTW, GAK, DTW) show zero seed-variance on MSR fixed cross-subject split | Cross-subject split is canonical (subjects 1,3,5,7,9 vs 2,4,6,8,10); seeds only shuffle within-set order; 1-NN classifiers give identical results. Acceptable for Phase 1 full-data. Phase 2 few-shot episodes restore variance. | 1.17 |
 
 ---
 
@@ -168,7 +171,8 @@ Use this table for anything preventing progress. Resolve and clear.
 
 | Blocker | Step | Date raised | Resolution / Next action |
 | --- | --- | --- | --- |
-| | | | |
+| LSTM mean accuracy 0.6902 below 0.70 sanity floor | 1.17 | 2026-05-28 | Rerun LSTM-only with hidden_dim=256, max_epochs=200, patience=20. See rerun commands below. |
+| GAK sigma=1.0 miscalibrated — identical results across all seeds (MSR fixed split) | 1.17 | 2026-05-28 | auto_sigma=True added to GAKBaseline; rerun GAK-only with --gak-auto-sigma. |
 
 ---
 
