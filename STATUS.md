@@ -1,6 +1,6 @@
 # STATUS — Q-SDTW Research Tracker
 
-**Last updated:** 2026-05-28
+**Last updated:** 2026-06-04
 **Active plan:** `RESEARCH_PROCESS_V2_few_shot_qsdtw.md`
 **Operating guide:** `CLAUDE.md`
 
@@ -35,8 +35,8 @@ After each step, also append to the **Decision Log** at the bottom if you made a
 
 | Phase | Title | Status | Steps Done / Total | Gate |
 | --- | --- | --- | --- | --- |
-| 1 | Methodology Lockdown | In progress | 16 / 25 | Phase 1 acceptance (Step 1.25) |
-| 2 | Few-Shot Centerpiece | Not started | 0 / 14 | Phase 2 acceptance (Step 2.14) |
+| 1 | Methodology Lockdown | **Done** | 25 / 25 | Phase 1 acceptance (Step 1.25) |
+| 2 | Few-Shot Centerpiece | In progress | 2 / 14 | Phase 2 acceptance (Step 2.14) |
 | 3 | Mechanism + Generalization | Not started | 0 / 18 | None (continues into Phase 4) |
 | 4 | Paper + Polish | Not started | 0 / 13 | Submission (Step 4.13) |
 
@@ -66,11 +66,11 @@ After each step, also append to the **Decision Log** at the bottom if you made a
 | 1.18 | Re-run DTW baselines (full data, 10 seeds, all feature modes) | Done | results/raw/dtw_baselines_phase1.csv (450 rows), results/tables/dtw_baselines_phase1_summary.csv | Best: position_velocity 0.8545 (raw_dtw and pca_dtw tied). CUDA sm_86 incompatible; used torch_cpu. |
 | 1.19 | Run Exact Local-SDTW (full data, 10 seeds, all feature modes) | Done | results/raw/local_sdtw_exact_phase1.csv (200 rows) | Best: position_velocity 0.8764 (w=15,r=2), bone_velocity 0.8691 (w=15,r=2). Both beat raw_dtw. |
 | 1.20 | Run SWAP Local-SDTW on full data | Done | results/raw/local_sdtw_swap_phase1.csv (120 rows) | SWAP@2048 within 1pp of exact on 3/4 combos (bone_velocity r=2: +0.47pp, r=3: +0.73pp; pos_vel r=3: -0.36pp). Acceptance criterion met. |
-| 1.21 | Aggregate Phase 1 results | Not started | | |
-| 1.22 | Generate Phase 1 comparison figure | Not started | | |
-| 1.23 | Pre-flight few-shot probe (K=1, 1 seed) | Not started | | **Gate** before Phase 2 |
-| 1.24 | Write `phase1_findings.md` | Not started | | |
-| 1.25 | Phase 1 acceptance check | Not started | | **Gate** |
+| 1.21 | Aggregate Phase 1 results | Done | results/tables/phase1_main_summary.csv (42 rows, best-config per method×feature_mode, Wilcoxon vs raw_dtw), results/tables/phase1_full_detail.csv (102 rows, all parameter combos) | LSTM/GAK retune versions used; pca_dtw Wilcoxon NaN = tied accuracy with raw_dtw (zero differences → Wilcoxon undefined) |
+| 1.22 | Generate Phase 1 comparison figure | Done | results/figures/phase1_full_data_comparison.png, results/figures/phase1_full_data_comparison.pdf, scripts/15_generate_paper_figures.py, src/utils/plotting.py | Grouped bar chart, 9 methods × 5 feature modes, significance markers (*p<0.05, **p<0.01) |
+| 1.23 | Pre-flight few-shot probe (K=1, 1 seed) | Done | results/raw/probe_1shot.csv, scripts/probe_few_shot_1shot.py | Raw DTW 0.6090; Exact +5.32pp (0.6622); SWAP +4.96pp (0.6586). Gap exceeds 2-3pp threshold. **Proceed to Phase 2.** |
+| 1.24 | Write `phase1_findings.md` | Done | results/REPORTS/phase1_findings.md | Go/no-go: GO. Phase 2 config: position_velocity, window=15, stride=5, rank=2, shots=2048 |
+| 1.25 | Phase 1 acceptance check | Done | All 8 checks passed: summary CSV (42 rows, n_seeds=10), figure PNG+PDF, findings.md, probe CSV, SWAP gap +4.96pp, pytest 121 passed | Phase 1 complete. Begin Phase 2. |
 
 ---
 
@@ -78,8 +78,8 @@ After each step, also append to the **Decision Log** at the bottom if you made a
 
 | Step | Description | Status | Evidence | Notes |
 | --- | --- | --- | --- | --- |
-| 2.1 | Implement `FewShotProtocol` class | Not started | | |
-| 2.2 | Add few-shot protocol tests | Not started | | |
+| 2.1 | Implement `FewShotProtocol` class | Done | src/eval/few_shot.py (FewShotProtocol, Episode, EvaluationResult, FewShotMethod) | |
+| 2.2 | Add few-shot protocol tests | Done | tests/test_few_shot.py (14 passed); pytest 135 passed | |
 | 2.3 | Add `scripts/10_run_few_shot.py` | Not started | | |
 | 2.4 | Run classical few-shot baselines | Not started | | |
 | 2.5 | Pre-train (or load) ST-GCN backbone | Not started | | |
@@ -170,6 +170,16 @@ Append a row to this table whenever a non-obvious choice is made (e.g., choosing
 | 2026-06-03 | Step 1.20 SWAP run will use position_velocity + bone_velocity (top 2 from 1.19) | Confirmed best modes from full exact sweep | 1.20 |
 | 2026-06-04 | SWAP@2048 converges to exact within 1pp on 3/4 combos; position_velocity rank=2 is 1.27pp off | Larger feature dim (D=120) + more rank interactions increases estimator variance at fixed shots | 1.20 |
 | 2026-06-04 | Shot-noise regularization signal visible at full data: bone_velocity rank=3 SWAP@512 and @2048 outperform exact by ~0.7-0.8pp | Preliminary evidence for the shot-noise-as-regularizer hypothesis; Phase 3 ablation will test this properly | 1.20 |
+| 2026-06-04 | Step 1.21 used best-config-per-(method,feature_mode) approach for Wilcoxon, not parameters_hash matching | parameters_hash differs across methods (different param schemas), so cross-method Wilcoxon requires matching on feature_mode only; best config is selected by highest acc_mean | 1.21 |
+| 2026-06-04 | Dropped original LSTM/GAK rows from classical CSV; used retune versions (lstm_retune_phase1.csv, gak_autosigma_phase1.csv) as canonical | Retune versions meet sanity floors and are the paper-track results; originals are superseded | 1.21 |
+| 2026-06-04 | Probe script uses batched pairwise_dtw_distances (numpy backend) for Raw DTW — 15x faster than individual calls | Individual dtw_distance() calls take ~82ms each; 200K pairs × 82ms = 4.5 hours. Batched: ~5ms/pair → ~30 min total | 1.23 |
+| 2026-06-04 | 1-shot probe confirms gap: Exact +5.32pp, SWAP +4.96pp over Raw DTW at K=1, 20-way, 50 episodes | Exceeds 2-3pp acceptance threshold; touches Phase 2 headline target of +5pp. Proceed to Phase 2. | 1.23 |
+| 2026-06-04 | Phase 1 complete — all 25 steps Done, pytest 121 passed, all acceptance criteria met | Go for Phase 2. Method locked: Q-SDTW, position_velocity, window=15, stride=5, rank=2, shots=2048 | 1.25 |
+| 2026-06-04 | pca_dtw = raw_dtw tie at window=none confirmed as genuine null result, not code bug | k=16 reduces 120→16 (90.4% var), different distance matrices (max Δ=0.34), same 1-NN assignments (235/275). PCA effect non-zero but zero-sum across window sweep. | Post-1.25 review |
+| 2026-06-04 | Ran SWAP@w=15, rank=2, shots=2048, 10 seeds to close experimental gap (Step 1.20 only swept w=10) | Result: mean=0.8727, std=0.0054, +1.82pp vs raw_dtw, p=0.0020 (W=0). Only 0.37pp below exact@w=15. Phase 2 window=15 config is now fully evidence-backed. results/raw/local_sdtw_swap_w15_phase1.csv | Post-1.25 review |
+| 2026-06-04 | SWAP Wilcoxon p=0.0235 confirmed non-degenerate: SWAP seed variance (std=0.0052) makes paired differences genuinely vary across seeds | Deterministic classifiers have degenerate Wilcoxon (all diffs constant); SWAP does not. p-value is a real probability. | Post-1.25 review |
+| 2026-06-04 | Probe Acc Std is across-episode std (1 seed), not across-seed std — labeled in findings doc accordingly | 0.0644 = std(50 episode accs, ddof=1). Cannot be cited as a population confidence interval. Phase 2 reports across-seed std. | Post-1.25 review |
+| 2026-06-04 | Identified real competitor: Exact Local-SDTW (+5.32pp at K=1) > raw_dtw, and it is classical | Phase 2 acceptance criterion should include Q-SDTW vs Exact Local-SDTW comparison, not just vs raw_dtw. Shot-noise regularizer and Hadamard signed-overlap are the two mechanisms that need to deliver. | Post-1.25 review |
 
 ---
 
