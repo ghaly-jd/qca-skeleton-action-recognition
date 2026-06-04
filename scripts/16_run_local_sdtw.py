@@ -18,7 +18,6 @@ if str(PROJECT_ROOT_FOR_IMPORTS) not in sys.path:
 
 from src.data.validation import ProcessedDataset, load_processed_dataset
 from src.distances.local_sdtw import (
-    _build_cost_matrix,
     _extract_local_bases,
     dtw_distance_from_cost_matrix,
 )
@@ -31,7 +30,6 @@ from src.eval.result_writer import (
     utc_timestamp,
 )
 from src.features.motion_features import apply_feature_mode
-from src.quantum.overlap_estimation import SwapTestOverlapEstimator
 from src.utils.io import read_json, read_yaml, write_csv_rows
 from src.utils.logging import get_logger
 from src.utils.paths import project_path
@@ -144,15 +142,24 @@ def run_experiment(
 
                 shots_iter: list[int | None] = [None] if backend == "exact" else shots_list
                 for shots in shots_iter:
-                    overlap_fn = _make_overlap_fn(backend, shots=shots, seed=seed)
                     start = perf_counter()
-                    dist_matrix = _pairwise_distances(
-                        test_bases,
-                        train_bases,
-                        overlap_fn=overlap_fn,
-                        rank=rank,
-                        dtw_window=dtw_window_val,
-                    )
+                    if backend == "exact":
+                        dist_matrix = _pairwise_distances_exact(
+                            test_bases,
+                            train_bases,
+                            rank=rank,
+                            dtw_window=dtw_window_val,
+                        )
+                    else:
+                        rng = np.random.default_rng(seed)
+                        dist_matrix = _pairwise_distances_swap(
+                            test_bases,
+                            train_bases,
+                            shots=shots,
+                            rng=rng,
+                            rank=rank,
+                            dtw_window=dtw_window_val,
+                        )
                     result = predict_1nn_from_distances(dist_matrix, y_train)
                     runtime = perf_counter() - start
 
@@ -197,38 +204,70 @@ def run_experiment(
     return rows
 
 
-def _make_overlap_fn(backend: str, *, shots: int | None, seed: int):
-    """Return an overlap callable for the given backend."""
-    if backend == "exact":
-        return lambda u, v: float((u @ v) ** 2)
-    if backend == "swap":
-        if shots is None:
-            raise ValueError("shots must be set for the swap backend.")
-        estimator = SwapTestOverlapEstimator(shots=shots, seed=seed)
-        return lambda u, v: estimator.estimate(u, v).overlap_squared
-    raise ValueError(f"Unknown backend '{backend}'. Choose from: {BACKENDS}.")
-
-
-def _pairwise_distances(
+def _pairwise_distances_exact(
     test_bases_list: list[np.ndarray],
     train_bases_list: list[np.ndarray],
     *,
-    overlap_fn: Any,
     rank: int,
     dtw_window: Any,
 ) -> np.ndarray:
-    """Compute N_test x N_train Local-SDTW distance matrix with pre-extracted bases."""
+    """Vectorized exact Local-SDTW distance matrix.
+
+    Uses einsum to compute all window-pair overlaps at once, replacing the
+    O(M1*M2*rank^2) Python loop with a single numpy op per sequence pair.
+    Matches the scalar _build_cost_matrix normalization: sum/rank.
+    """
     n_test = len(test_bases_list)
     n_train = len(train_bases_list)
     distances = np.empty((n_test, n_train), dtype=np.float64)
     for i, test_bases in enumerate(test_bases_list):
         for j, train_bases in enumerate(train_bases_list):
-            cost_matrix = _build_cost_matrix(
-                test_bases,
-                train_bases,
-                overlap_fn=overlap_fn,
-                rank=rank,
+            # overlaps[m,n,a,b] = test_bases[m,:,a] · train_bases[n,:,b]
+            overlaps = np.einsum("mda,ndb->mnab", test_bases, train_bases)
+            affinity = (overlaps ** 2).sum(axis=(-2, -1)) / rank  # (M1, M2)
+            cost_matrix = np.clip(1.0 - affinity, 0.0, None)
+            distances[i, j] = dtw_distance_from_cost_matrix(
+                cost_matrix,
+                normalize_by_path_length=True,
+                window_ratio=dtw_window,
             )
+    return distances
+
+
+def _pairwise_distances_swap(
+    test_bases_list: list[np.ndarray],
+    train_bases_list: list[np.ndarray],
+    *,
+    shots: int,
+    rng: np.random.Generator,
+    rank: int,
+    dtw_window: Any,
+) -> np.ndarray:
+    """Vectorized SWAP-test Local-SDTW distance matrix.
+
+    Replaces ~600M Python overlap_fn calls (per rank=3 combo) with a single
+    einsum + one vectorized np.random.binomial draw per sequence pair.
+    Expected speedup: ~50-100x over the scalar estimator path.
+
+    Normalization matches scalar path: sum(est_overlaps_sq over rank^2) / rank.
+    Negative estimates from shot noise are preserved before summing; the final
+    cost is clipped at 0 (same as the scalar max(0, 1-affinity) formula).
+    """
+    n_test = len(test_bases_list)
+    n_train = len(train_bases_list)
+    distances = np.empty((n_test, n_train), dtype=np.float64)
+    for i, test_bases in enumerate(test_bases_list):
+        for j, train_bases in enumerate(train_bases_list):
+            # True squared overlaps: (M1, M2, rank, rank)
+            overlaps_sq = np.einsum("mda,ndb->mnab", test_bases, train_bases) ** 2
+            # SWAP-test: P(measure |0>) = (1 + |<u|v>|^2) / 2
+            p_zero = np.clip((1.0 + overlaps_sq) / 2.0, 0.0, 1.0)
+            counts_zero = rng.binomial(shots, p_zero)
+            # Estimated squared overlap (can be negative due to shot noise)
+            est_sq = 2.0 * counts_zero / shots - 1.0
+            # Affinity: sum over rank^2 pairs / rank (matches scalar normalization)
+            affinity = est_sq.sum(axis=(-2, -1)) / rank  # (M1, M2)
+            cost_matrix = np.clip(1.0 - affinity, 0.0, None)
             distances[i, j] = dtw_distance_from_cost_matrix(
                 cost_matrix,
                 normalize_by_path_length=True,

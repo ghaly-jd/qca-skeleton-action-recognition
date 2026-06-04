@@ -64,7 +64,7 @@ After each step, also append to the **Decision Log** at the bottom if you made a
 | 1.16 | Profile and optimize quantum simulation | Done | src/quantum/overlap_estimation.py, src/distances/quantum_estimated_angles.py, scripts/04_run_quantum_angles_sim.py, results/REPORTS/step_1_16_quantum_profile.md; pytest (119 passed, 2 skipped) | 60x40 rank=2 shots=1024: 1.09s -> 0.0857s; full seed0 rank=2 shots=1024: 0.974s |
 | 1.17 | Run classical baselines (full data, 10 seeds, all feature modes) | Done | results/raw/classical_baselines_phase1.csv (250 rows; MLP/RF/KDTW), results/raw/lstm_retune_phase1.csv (50 rows), results/raw/gak_autosigma_phase1.csv (50 rows) | LSTM best bone_velocity 0.712 ✓; GAK best bone_vectors 0.770 ✓; GAK+velocity 0.277 (poor — noted). All sanity floors met. |
 | 1.18 | Re-run DTW baselines (full data, 10 seeds, all feature modes) | Done | results/raw/dtw_baselines_phase1.csv (450 rows), results/tables/dtw_baselines_phase1_summary.csv | Best: position_velocity 0.8545 (raw_dtw and pca_dtw tied). CUDA sm_86 incompatible; used torch_cpu. |
-| 1.19 | Run Exact Local-SDTW (full data, 10 seeds, all feature modes) | In progress | scripts/16_run_local_sdtw.py | Runner script created; full run not yet launched |
+| 1.19 | Run Exact Local-SDTW (full data, 10 seeds, all feature modes) | Done | results/raw/local_sdtw_exact_phase1.csv (200 rows) | Best: position_velocity 0.8764 (w=15,r=2), bone_velocity 0.8691 (w=15,r=2). Both beat raw_dtw. |
 | 1.20 | Run SWAP Local-SDTW on full data | Not started | | Long run |
 | 1.21 | Aggregate Phase 1 results | Not started | | |
 | 1.22 | Generate Phase 1 comparison figure | Not started | | |
@@ -166,6 +166,8 @@ Append a row to this table whenever a non-obvious choice is made (e.g., choosing
 | 2026-06-01 | GAK velocity 0.277 despite auto_sigma; velocity features have incompatible scale/distribution for the GAK exponential kernel | Not a bug; exclude velocity from GAK comparisons in the paper | 1.17 |
 | 2026-06-01 | DTW best feature is position_velocity (0.8545); PCA adds nothing over raw_dtw at this feature | position_velocity likely saturates the Euclidean discriminability available at this rank | 1.18 |
 | 2026-06-01 | CUDA sm_86 (RTX A5000) incompatible with installed PyTorch (max sm_70); all torch runs use torch_cpu | Hardware constraint; no code change needed | 1.18 |
+| 2026-06-03 | Local-SDTW-exact best feature is position_velocity (0.8764, window=15, rank=2); second best bone_velocity (0.8691) | Both beat raw_dtw; position alone underperforms DTW (0.8109 vs 0.8436) — subspace method needs velocity component to shine | 1.19 |
+| 2026-06-03 | Step 1.20 SWAP run will use position_velocity + bone_velocity (top 2 from 1.19) | Confirmed best modes from full exact sweep | 1.20 |
 
 ---
 
