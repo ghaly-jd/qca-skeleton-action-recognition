@@ -65,7 +65,7 @@ After each step, also append to the **Decision Log** at the bottom if you made a
 | 1.17 | Run classical baselines (full data, 10 seeds, all feature modes) | Done | results/raw/classical_baselines_phase1.csv (250 rows; MLP/RF/KDTW), results/raw/lstm_retune_phase1.csv (50 rows), results/raw/gak_autosigma_phase1.csv (50 rows) | LSTM best bone_velocity 0.712 ✓; GAK best bone_vectors 0.770 ✓; GAK+velocity 0.277 (poor — noted). All sanity floors met. |
 | 1.18 | Re-run DTW baselines (full data, 10 seeds, all feature modes) | Done | results/raw/dtw_baselines_phase1.csv (450 rows), results/tables/dtw_baselines_phase1_summary.csv | Best: position_velocity 0.8545 (raw_dtw and pca_dtw tied). CUDA sm_86 incompatible; used torch_cpu. |
 | 1.19 | Run Exact Local-SDTW (full data, 10 seeds, all feature modes) | Done | results/raw/local_sdtw_exact_phase1.csv (200 rows) | Best: position_velocity 0.8764 (w=15,r=2), bone_velocity 0.8691 (w=15,r=2). Both beat raw_dtw. |
-| 1.20 | Run SWAP Local-SDTW on full data | Not started | | Long run |
+| 1.20 | Run SWAP Local-SDTW on full data | Done | results/raw/local_sdtw_swap_phase1.csv (120 rows) | SWAP@2048 within 1pp of exact on 3/4 combos (bone_velocity r=2: +0.47pp, r=3: +0.73pp; pos_vel r=3: -0.36pp). Acceptance criterion met. |
 | 1.21 | Aggregate Phase 1 results | Not started | | |
 | 1.22 | Generate Phase 1 comparison figure | Not started | | |
 | 1.23 | Pre-flight few-shot probe (K=1, 1 seed) | Not started | | **Gate** before Phase 2 |
@@ -168,6 +168,8 @@ Append a row to this table whenever a non-obvious choice is made (e.g., choosing
 | 2026-06-01 | CUDA sm_86 (RTX A5000) incompatible with installed PyTorch (max sm_70); all torch runs use torch_cpu | Hardware constraint; no code change needed | 1.18 |
 | 2026-06-03 | Local-SDTW-exact best feature is position_velocity (0.8764, window=15, rank=2); second best bone_velocity (0.8691) | Both beat raw_dtw; position alone underperforms DTW (0.8109 vs 0.8436) — subspace method needs velocity component to shine | 1.19 |
 | 2026-06-03 | Step 1.20 SWAP run will use position_velocity + bone_velocity (top 2 from 1.19) | Confirmed best modes from full exact sweep | 1.20 |
+| 2026-06-04 | SWAP@2048 converges to exact within 1pp on 3/4 combos; position_velocity rank=2 is 1.27pp off | Larger feature dim (D=120) + more rank interactions increases estimator variance at fixed shots | 1.20 |
+| 2026-06-04 | Shot-noise regularization signal visible at full data: bone_velocity rank=3 SWAP@512 and @2048 outperform exact by ~0.7-0.8pp | Preliminary evidence for the shot-noise-as-regularizer hypothesis; Phase 3 ablation will test this properly | 1.20 |
 
 ---
 
